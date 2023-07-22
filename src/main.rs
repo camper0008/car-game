@@ -75,8 +75,8 @@ fn draw_gearstick(
         texture,
         rect!(64, 0, 64, 64),
         rect!(
-            position.0 as f64 + x * 128.0,
-            position.1 as f64 + y * 128.0,
+            f64::from(position.0) + x * 128.0,
+            f64::from(position.1) + y * 128.0,
             160,
             160
         ),
@@ -107,8 +107,8 @@ fn draw_hand(
         texture,
         rect!(sprite_offset, 64, 64, 64),
         rect!(
-            position.0 as f64 + x * 128.0,
-            position.1 as f64 + y * 128.0,
+            f64::from(position.0) + x * 128.0,
+            f64::from(position.1) + y * 128.0,
             128 + 32,
             128 + 32
         ),
@@ -207,7 +207,7 @@ fn update_tachometer_angle(angle: &mut f64, accelerating: bool) {
         *angle += 0.5 * acceleration_rate;
     }
     if *angle > min_angle {
-        *angle = min_angle
+        *angle = min_angle;
     } else if *angle < max_angle {
         *angle = max_angle + 5.0;
     }
@@ -221,7 +221,7 @@ fn center(max: i16, length: i16) -> i16 {
     (max / 2) - length / 2
 }
 
-fn check_for_controllers(system: GameControllerSubsystem) -> Result<GameController, String> {
+fn check_for_controllers(system: &GameControllerSubsystem) -> Result<GameController, String> {
     if system.num_joysticks()? == 0 {
         return Err("no controllers connected".to_string());
     }
@@ -234,7 +234,10 @@ fn main() -> Result<(), String> {
     let controller_system = sdl_context.game_controller()?;
     let window = prepare_window(&sdl_context)?;
     let (width, height) = window.size();
-    let (width, height) = (width as i16, height as i16);
+    let (width, height) = (
+        i16::try_from(width).expect("invalid width"),
+        i16::try_from(height).expect("invalid height"),
+    );
     let mut canvas = prepare_canvas(window)?;
 
     let texture_creator = canvas.texture_creator();
@@ -254,7 +257,7 @@ fn main() -> Result<(), String> {
     let mut controller_right_x = 0;
     let mut controller_right_y = 0;
 
-    let controller = match check_for_controllers(controller_system) {
+    let controller = match check_for_controllers(&controller_system) {
         Ok(controller) => Some(controller),
         Err(err) => {
             println!("error connecting controller: {err}");
@@ -274,8 +277,8 @@ fn main() -> Result<(), String> {
         )?;
 
         let hand_target = if controller.is_some() {
-            let x = ((controller_right_x as f64) / (i16::MAX as f64)) * 1.5;
-            let y = ((controller_right_y as f64) / (i16::MAX as f64)) * 1.5;
+            let x = (f64::from(controller_right_x) / f64::from(i16::MAX)) * 1.5;
+            let y = (f64::from(controller_right_y) / f64::from(i16::MAX)) * 1.5;
             let x = if x > 1.0 {
                 1.0
             } else if x < -1.0 {
@@ -331,7 +334,7 @@ fn main() -> Result<(), String> {
             hand_offset,
             hand_target,
             hand_alpha,
-            key_down(&key_map, KeyCode::Space),
+            key_down(&key_map, &KeyCode::Space),
         )?;
 
         canvas.present();
@@ -376,12 +379,9 @@ fn main() -> Result<(), String> {
                     axis,
                     value,
                 } => match axis {
-                    Axis::LeftX => {}
-                    Axis::LeftY => {}
                     Axis::RightX => controller_right_x = value,
                     Axis::RightY => controller_right_y = value,
-                    Axis::TriggerLeft => {}
-                    Axis::TriggerRight => {}
+                    _ => {}
                 },
                 Event::ControllerButtonDown {
                     timestamp: _,
@@ -418,7 +418,7 @@ fn main() -> Result<(), String> {
             }
         }
 
-        update_tachometer_angle(&mut tachometer_angle, key_down(&key_map, KeyCode::Shift));
+        update_tachometer_angle(&mut tachometer_angle, key_down(&key_map, &KeyCode::Shift));
 
         hand_alpha += 12.0 / 60.0;
         if hand_alpha > 1.0 {
@@ -446,12 +446,12 @@ fn main() -> Result<(), String> {
             gear_offset = new_gear_offset;
         }
 
-        if key_changed(&key_map, KeyCode::Space) {
+        if key_changed(&key_map, &KeyCode::Space) {
             let distance = ((new_hand_offset.0 - new_gear_offset.0).powi(2)
                 + (new_hand_offset.1 - new_gear_offset.1).powi(2))
             .sqrt();
 
-            if distance < 0.5 && key_down(&key_map, KeyCode::Space) {
+            if distance < 0.5 && key_down(&key_map, &KeyCode::Space) {
                 gear_held = true;
             } else {
                 gear_held = false;
