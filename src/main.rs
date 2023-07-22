@@ -234,6 +234,91 @@ fn check_for_controllers(system: &GameControllerSubsystem) -> Result<GameControl
     system.open(0).map_err(|e| e.to_string())
 }
 
+fn poll_events(sdl_context: &Sdl, key_map: &mut KeyMap) -> Result<(), String> {
+    for event in sdl_context.event_pump()?.poll_iter() {
+        match event {
+            Event::Quit { .. }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => {
+                key_map.insert(KeyCode::Quit, KeyState::Down);
+            }
+            Event::KeyDown {
+                keycode: Some(key), ..
+            } => {
+                let Ok(key) = key.try_into() else {
+                        println!("unrecognized key {key:#?}");
+                        continue;
+                    };
+                let state = match key_map.get(&key) {
+                    Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
+                    Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
+                };
+                key_map.insert(key, state);
+            }
+            Event::KeyUp {
+                keycode: Some(key), ..
+            } => {
+                let Ok(key) = key.try_into() else {
+                        println!("unrecognized key {key:#?}");
+                        continue;
+                    };
+                let state = match key_map.get(&key) {
+                    Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
+                    Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
+                    None => unreachable!(),
+                };
+                key_map.insert(key, state);
+            }
+            Event::ControllerButtonDown {
+                timestamp: _,
+                which: _,
+                button,
+            } => {
+                let Ok(key) = button.try_into() else {
+                        println!("unrecognized key {button:#?}");
+                        continue;
+                    };
+                let state = match key_map.get(&key) {
+                    Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
+                    Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
+                };
+                key_map.insert(key, state);
+            }
+            Event::ControllerButtonUp {
+                timestamp: _,
+                which: _,
+                button,
+            } => {
+                let Ok(key) = button.try_into() else {
+                        println!("unrecognized key {button:#?}");
+                        continue;
+                    };
+                let state = match key_map.get(&key) {
+                    Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
+                    Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
+                    None => unreachable!(),
+                };
+                key_map.insert(key, state);
+            }
+            Event::ControllerAxisMotion {
+                timestamp: _,
+                which: _,
+                axis,
+                value: _,
+            } => match axis {
+                Axis::RightX => todo!(), //controller_right_x = value,
+                Axis::RightY => todo!(), //controller_right_y = value,
+                _ => {}
+            },
+            _ => (),
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let controller_system = sdl_context.game_controller()?;
@@ -291,18 +376,6 @@ fn main() -> Result<(), String> {
             tachometer_angle.to_radians(),
         )?;
 
-        hand.target = if controller.is_some() {
-            Hand::gamepad_target(controller_right_x, controller_right_y)
-        } else {
-            Hand::keyboard_target(&key_map)
-        };
-
-        gear.target = if gear.held {
-            clamp(hand.target, hand.offset)
-        } else {
-            gear.resting_target()
-        };
-
         let smoothed_gear_offset = lerp2d(gear.alpha, gear.offset, gear.target);
 
         draw_gearstick(
@@ -311,10 +384,6 @@ fn main() -> Result<(), String> {
             gearstick_position,
             smoothed_gear_offset,
         )?;
-
-        if gear.held {
-            hand.target = clamp(hand.target, hand.offset)
-        }
 
         let smoothed_hand_offset = lerp2d(hand.alpha, hand.offset, hand.target);
 
@@ -335,84 +404,25 @@ fn main() -> Result<(), String> {
 
         canvas.present();
 
-        for event in sdl_context.event_pump()?.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'game_loop Ok(()),
-                Event::KeyDown {
-                    keycode: Some(key), ..
-                } => {
-                    let Ok(key) = key.try_into() else {
-                        println!("unrecognized key {key:#?}");
-                        continue;
-                    };
-                    let state = match key_map.get(&key) {
-                        Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
-                        Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
-                    };
-                    key_map.insert(key, state);
-                }
-                Event::KeyUp {
-                    keycode: Some(key), ..
-                } => {
-                    let Ok(key) = key.try_into() else {
-                        println!("unrecognized key {key:#?}");
-                        continue;
-                    };
-                    let state = match key_map.get(&key) {
-                        Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
-                        Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
-                        None => unreachable!(),
-                    };
-                    key_map.insert(key, state);
-                }
-                Event::ControllerButtonDown {
-                    timestamp: _,
-                    which: _,
-                    button,
-                } => {
-                    let Ok(key) = button.try_into() else {
-                        println!("unrecognized key {button:#?}");
-                        continue;
-                    };
-                    let state = match key_map.get(&key) {
-                        Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
-                        Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
-                    };
-                    key_map.insert(key, state);
-                }
-                Event::ControllerButtonUp {
-                    timestamp: _,
-                    which: _,
-                    button,
-                } => {
-                    let Ok(key) = button.try_into() else {
-                        println!("unrecognized key {button:#?}");
-                        continue;
-                    };
-                    let state = match key_map.get(&key) {
-                        Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
-                        Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
-                        None => unreachable!(),
-                    };
-                    key_map.insert(key, state);
-                }
-                Event::ControllerAxisMotion {
-                    timestamp: _,
-                    which: _,
-                    axis,
-                    value,
-                } => match axis {
-                    Axis::RightX => controller_right_x = value,
-                    Axis::RightY => controller_right_y = value,
-                    _ => {}
-                },
-                _ => (),
-            }
+        poll_events(&sdl_context, &mut key_map)?;
+
+        if key_map.get(&KeyCode::Quit).is_some() {
+            break 'game_loop Ok(());
         }
+
+        hand.target = if controller.is_some() {
+            Hand::gamepad_target(controller_right_x, controller_right_y)
+        } else {
+            Hand::keyboard_target(&key_map)
+        };
+
+        if gear.held {
+            let target = clamp(hand.target, hand.offset);
+            hand.target = target;
+            gear.target = target;
+        } else {
+            gear.target = gear.resting_target()
+        };
 
         hand.tick(12.0 / 60.0);
         gear.tick(12.0 / 60.0);

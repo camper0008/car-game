@@ -16,6 +16,7 @@ pub enum KeyCode {
     D,
     Space,
     Shift,
+    Quit,
 }
 
 impl TryFrom<sdl2::keyboard::Keycode> for KeyCode {
@@ -48,11 +49,11 @@ impl TryFrom<sdl2::controller::Button> for KeyCode {
 pub type KeyMap = HashMap<KeyCode, KeyState>;
 
 pub fn key_down(key_map: &KeyMap, key: &KeyCode) -> bool {
-    matches!(key_map.get(&key), Some(KeyState::WasUp | KeyState::Down))
+    matches!(key_map.get(key), Some(KeyState::WasUp | KeyState::Down))
 }
 
 pub fn key_changed(key_map: &KeyMap, key: &KeyCode) -> bool {
-    matches!(key_map.get(&key), Some(KeyState::WasUp | KeyState::WasDown))
+    matches!(key_map.get(key), Some(KeyState::WasUp | KeyState::WasDown))
 }
 
 pub fn change_key(key_map: &mut KeyMap, key: KeyCode) {
