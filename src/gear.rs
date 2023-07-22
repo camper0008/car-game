@@ -1,4 +1,4 @@
-use crate::lerp::lerp2d;
+use crate::lerp;
 
 pub struct Gear {
     pub alpha: f64,
@@ -37,35 +37,35 @@ impl Gear {
         (x, y)
     }
 
-    pub fn state(&self) -> GearState {
-        let (x, y) = lerp2d(self.alpha, self.offset, self.target);
+    pub fn state(&self) -> Speed {
+        let (x, y) = lerp::two_dimensional(self.alpha, self.offset, self.target);
 
         if (-0.9..=0.9).contains(&y) {
-            return GearState::Neutral;
+            return Speed::Neutral;
         }
         if (0.25..=0.9).contains(&x) {
-            return GearState::Neutral;
+            return Speed::Neutral;
         }
         if (-0.9..=-0.25).contains(&x) {
-            return GearState::Neutral;
+            return Speed::Neutral;
         }
 
         if x < -0.9 {
             if y <= -0.9 {
-                GearState::First
+                Speed::First
             } else {
-                GearState::Second
+                Speed::Second
             }
         } else if x < 0.25 {
             if y <= -0.9 {
-                GearState::Third
+                Speed::Third
             } else {
-                GearState::Fourth
+                Speed::Fourth
             }
         } else if y <= -0.9 {
-            GearState::Fifth
+            Speed::Fifth
         } else {
-            GearState::Rocket
+            Speed::Rocket
         }
     }
 
@@ -82,7 +82,7 @@ impl Gear {
     }
 }
 
-pub enum GearState {
+pub enum Speed {
     Neutral,
     First,
     Second,

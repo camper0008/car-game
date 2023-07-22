@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub enum InputState {
+pub enum ActionState {
     Inactive,
     Active,
     JustActive,
@@ -47,7 +47,7 @@ impl TryFrom<sdl2::controller::Button> for Action {
 }
 
 pub struct Input {
-    action_map: HashMap<Action, InputState>,
+    action_map: HashMap<Action, ActionState>,
     pub right_joystick: (f64, f64),
 }
 
@@ -87,29 +87,29 @@ impl Input {
         self.right_joystick.1 = value;
     }
 
-    pub fn get(&self, action: &Action) -> Option<&InputState> {
+    pub fn get(&self, action: &Action) -> Option<&ActionState> {
         self.action_map.get(action)
     }
-    pub fn insert(&mut self, action: Action, state: InputState) -> Option<InputState> {
+    pub fn insert(&mut self, action: Action, state: ActionState) -> Option<ActionState> {
         self.action_map.insert(action, state)
     }
     pub fn action_active(&self, action: &Action) -> bool {
         matches!(
             self.get(action),
-            Some(InputState::JustActive | InputState::Active)
+            Some(ActionState::JustActive | ActionState::Active)
         )
     }
     pub fn action_changed(&self, action: &Action) -> bool {
         matches!(
             self.get(action),
-            Some(InputState::JustActive | InputState::JustInactive)
+            Some(ActionState::JustActive | ActionState::JustInactive)
         )
     }
 
     pub fn action_tick(&mut self, action: Action) {
         let state = match self.get(&action) {
-            Some(InputState::Inactive | InputState::JustInactive) | None => InputState::Inactive,
-            Some(InputState::JustActive | InputState::Active) => InputState::Active,
+            Some(ActionState::Inactive | ActionState::JustInactive) | None => ActionState::Inactive,
+            Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
         };
         self.insert(action, state);
     }

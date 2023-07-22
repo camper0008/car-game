@@ -1,4 +1,5 @@
 #![warn(clippy::unwrap_used)]
+#![allow(clippy::cast_possible_truncation)]
 
 mod gear;
 mod hand;
@@ -6,10 +7,9 @@ mod input;
 mod lerp;
 mod macros;
 
-use gear::Gear;
+use gear::{Gear, Speed};
 use hand::{clamp, Hand};
-use input::{Action, Input, InputState};
-use lerp::lerp2d;
+use input::{Action, ActionState, Input};
 use sdl2::controller::{Axis, GameController};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -114,13 +114,13 @@ fn draw_gear_state(
     let initial_y = 64;
 
     let (x, y) = match state {
-        gear::GearState::Neutral => (0, 0),
-        gear::GearState::Rocket => (1, 0),
-        gear::GearState::First => (0, 1),
-        gear::GearState::Second => (1, 1),
-        gear::GearState::Third => (0, 2),
-        gear::GearState::Fourth => (1, 2),
-        gear::GearState::Fifth => (0, 3),
+        Speed::Neutral => (0, 0),
+        Speed::Rocket => (1, 0),
+        Speed::First => (0, 1),
+        Speed::Second => (1, 1),
+        Speed::Third => (0, 2),
+        Speed::Fourth => (1, 2),
+        Speed::Fifth => (0, 3),
     };
 
     canvas.copy(
@@ -138,7 +138,7 @@ fn draw_keyboard_or_controller(
     position: (i16, i16),
     is_keyboard: bool,
 ) -> Result<(), String> {
-    let offset = if is_keyboard { 1 } else { 0 };
+    let offset = i32::from(is_keyboard);
 
     canvas.copy(
         texture,
@@ -239,7 +239,7 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                 keycode: Some(Keycode::Escape),
                 ..
             } => {
-                input.insert(Action::Quit, InputState::Active);
+                input.insert(Action::Quit, ActionState::Active);
             }
             Event::KeyDown {
                 keycode: Some(key), ..
@@ -249,10 +249,10 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                         continue;
                     };
                 let state = match input.get(&key) {
-                    Some(InputState::Inactive | InputState::JustInactive) | None => {
-                        InputState::JustActive
+                    Some(ActionState::Inactive | ActionState::JustInactive) | None => {
+                        ActionState::JustActive
                     }
-                    Some(InputState::JustActive | InputState::Active) => InputState::Active,
+                    Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
                 };
                 input.insert(key, state);
             }
@@ -266,10 +266,10 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                         continue;
                     };
                 let state = match input.get(&key) {
-                    Some(InputState::Inactive | InputState::JustInactive) | None => {
-                        InputState::JustActive
+                    Some(ActionState::Inactive | ActionState::JustInactive) | None => {
+                        ActionState::JustActive
                     }
-                    Some(InputState::JustActive | InputState::Active) => InputState::Active,
+                    Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
                 };
                 input.insert(key, state);
             }
@@ -282,8 +282,12 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                         continue;
                     };
                 let state = match input.get(&key) {
-                    Some(InputState::Active | InputState::JustActive) => InputState::JustInactive,
-                    Some(InputState::Inactive | InputState::JustInactive) => InputState::Inactive,
+                    Some(ActionState::Active | ActionState::JustActive) => {
+                        ActionState::JustInactive
+                    }
+                    Some(ActionState::Inactive | ActionState::JustInactive) => {
+                        ActionState::Inactive
+                    }
                     None => unreachable!(),
                 };
                 input.insert(key, state);
@@ -298,8 +302,12 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                         continue;
                     };
                 let state = match input.get(&key) {
-                    Some(InputState::Active | InputState::JustActive) => InputState::JustInactive,
-                    Some(InputState::Inactive | InputState::JustInactive) => InputState::Inactive,
+                    Some(ActionState::Active | ActionState::JustActive) => {
+                        ActionState::JustInactive
+                    }
+                    Some(ActionState::Inactive | ActionState::JustInactive) => {
+                        ActionState::Inactive
+                    }
                     None => unreachable!(),
                 };
                 input.insert(key, state);
@@ -376,7 +384,7 @@ fn main() -> Result<(), String> {
             tachometer_angle.to_radians(),
         )?;
 
-        let smoothed_gear_offset = lerp2d(gear.alpha, gear.offset, gear.target);
+        let smoothed_gear_offset = lerp::two_dimensional(gear.alpha, gear.offset, gear.target);
 
         draw_gearstick(
             &mut canvas,
@@ -385,7 +393,7 @@ fn main() -> Result<(), String> {
             smoothed_gear_offset,
         )?;
 
-        let smoothed_hand_offset = lerp2d(hand.alpha, hand.offset, hand.target);
+        let smoothed_hand_offset = lerp::two_dimensional(hand.alpha, hand.offset, hand.target);
 
         draw_hand(
             &mut canvas,
@@ -421,7 +429,7 @@ fn main() -> Result<(), String> {
             hand.target = target;
             gear.target = target;
         } else {
-            gear.target = gear.resting_target()
+            gear.target = gear.resting_target();
         };
 
         hand.tick(12.0 / 60.0);
