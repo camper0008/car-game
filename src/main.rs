@@ -53,7 +53,7 @@ fn draw_gearstick(
     alpha: f64,
 ) -> Result<(f64, f64), String> {
     canvas.copy(
-        &texture,
+        texture,
         rect!(128, 0, 64, 64),
         rect!(position.0, position.1, 160, 160),
     )?;
@@ -72,7 +72,7 @@ fn draw_gearstick(
     }
 
     canvas.copy(
-        &texture,
+        texture,
         rect!(64, 0, 64, 64),
         rect!(
             position.0 as f64 + x * 128.0,
@@ -104,7 +104,7 @@ fn draw_hand(
     let y = lerp(alpha, offset.1, target.1);
 
     canvas.copy(
-        &texture,
+        texture,
         rect!(sprite_offset, 64, 64, 64),
         rect!(
             position.0 as f64 + x * 128.0,
@@ -139,7 +139,7 @@ fn draw_gear_state(
     };
 
     canvas.copy(
-        &texture,
+        texture,
         rect!(initial_x + x * 32, initial_y + y * 16, 32, 16),
         rect!(position.0, position.1, 256, 128),
     )?;
@@ -154,7 +154,7 @@ fn draw_tachometer(
     angle: f64,
 ) -> Result<(), String> {
     canvas.copy(
-        &texture,
+        texture,
         rect!(0, 0, 64, 64),
         rect!(position.0, position.1, 256, 256),
     )?;
@@ -269,7 +269,7 @@ fn main() -> Result<(), String> {
         draw_tachometer(
             &mut canvas,
             &texture,
-            (128 * 1, padded_end(height, 256)),
+            (128, padded_end(height, 256)),
             tachometer_angle.to_radians(),
         )?;
 

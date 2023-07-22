@@ -5,7 +5,7 @@ pub fn gear_resting_target((x, y): (f64, f64)) -> (f64, f64) {
         1.0
     } else if x < -0.9 {
         -1.0
-    } else if x > 0.25 || x < -0.25 {
+    } else if !(-0.25..=0.25).contains(&x) {
         x
     } else {
         0.0
@@ -37,13 +37,13 @@ pub enum Gear {
 }
 
 pub fn gear_state((x, y): (f64, f64)) -> Gear {
-    if y >= -0.9 && y <= 0.9 {
+    if (-0.9..=0.9).contains(&y) {
         return Gear::Neutral;
     }
-    if x <= 0.9 && x >= 0.25 {
+    if (0.25..=0.9).contains(&x) {
         return Gear::Neutral;
     }
-    if x >= -0.9 && x <= -0.25 {
+    if (-0.9..=-0.25).contains(&x) {
         return Gear::Neutral;
     }
 
@@ -59,11 +59,9 @@ pub fn gear_state((x, y): (f64, f64)) -> Gear {
         } else {
             Gear::Fourth
         }
+    } else if y <= -0.9 {
+        Gear::Fifth
     } else {
-        if y <= -0.9 {
-            Gear::Fifth
-        } else {
-            Gear::Rocket
-        }
+        Gear::Rocket
     }
 }
