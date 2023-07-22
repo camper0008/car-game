@@ -1,12 +1,15 @@
 # car-demo
 
-controls: 
+controls:
+keyboard:
 - WASD to move hand 
 - space to grab 
 - shift to accelerate
 - esc to quit
 
-controller support WIP after stick is working as intended
+controller:
+- right stick controls hand
+- right bumper to grab stick
 
 dependencies:
 
