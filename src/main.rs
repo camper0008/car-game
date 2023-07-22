@@ -49,8 +49,24 @@ fn draw_gearstick(
     target: (f64, f64),
     alpha: f64,
 ) -> Result<(f64, f64), String> {
+    canvas.copy(
+        &texture,
+        rect!(128, 0, 64, 64),
+        rect!(position.0, position.1, 160, 160),
+    )?;
+
     let x = lerp(alpha, offset.0, target.0);
     let y = lerp(alpha, offset.1, target.1);
+
+    let start_x = position.0 + 80;
+    let start_y = position.1 + 80;
+    let end_x = position.0 + 80 + (x * 128.0) as i16;
+    let end_y = position.1 + 80 + (y * 128.0) as i16;
+
+    if !(start_x == end_x && start_y == end_y) {
+        canvas.filled_circle(start_x, start_y, 32, Color::RGB(178, 16, 48))?;
+        canvas.thick_line(start_x, start_y, end_x, end_y, 64, Color::RGB(178, 16, 48))?;
+    }
 
     canvas.copy(
         &texture,
@@ -58,8 +74,8 @@ fn draw_gearstick(
         rect!(
             position.0 as f64 + x * 128.0,
             position.1 as f64 + y * 128.0,
-            128 + 32,
-            128 + 32
+            160,
+            160
         ),
     )?;
 
