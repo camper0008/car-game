@@ -147,6 +147,23 @@ fn draw_gear_state(
     Ok(())
 }
 
+fn draw_keyboard_or_controller(
+    canvas: &mut WindowCanvas,
+    texture: &Texture,
+    position: (i16, i16),
+    is_keyboard: bool,
+) -> Result<(), String> {
+    let offset = if is_keyboard { 1 } else { 0 };
+
+    canvas.copy(
+        texture,
+        rect!(192, 16 * offset, 32, 16),
+        rect!(position.0, position.1, 256, 128),
+    )?;
+
+    Ok(())
+}
+
 fn draw_tachometer(
     canvas: &mut WindowCanvas,
     texture: &Texture,
@@ -268,6 +285,8 @@ fn main() -> Result<(), String> {
     'game_loop: loop {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
+
+        draw_keyboard_or_controller(&mut canvas, &texture, (0, 0), controller.is_none())?;
 
         draw_tachometer(
             &mut canvas,
