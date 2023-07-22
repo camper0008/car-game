@@ -7,7 +7,8 @@ mod macros;
 
 use gear::{gear_resting_target, gear_state};
 use hand::{change_hand, clamp_hand, hand_changed, hand_target};
-use key_map::{change_key, key_changed, key_down, KeyMap};
+use key_map::{change_key, key_changed, key_down, KeyCode, KeyMap};
+use sdl2::controller::{Axis, GameController};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::{InitFlag, LoadTexture};
@@ -16,7 +17,7 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Texture, WindowCanvas};
 use sdl2::video::Window;
-use sdl2::Sdl;
+use sdl2::{GameControllerSubsystem, Sdl};
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -220,8 +221,17 @@ fn center(max: i16, length: i16) -> i16 {
     (max / 2) - length / 2
 }
 
+fn check_for_controllers(system: GameControllerSubsystem) -> Result<GameController, String> {
+    if system.num_joysticks()? == 0 {
+        return Err("no controllers connected".to_string());
+    }
+
+    system.open(0).map_err(|e| e.to_string())
+}
+
 fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
+    let controller_system = sdl_context.game_controller()?;
     let window = prepare_window(&sdl_context)?;
     let (width, height) = window.size();
     let (width, height) = (width as i16, height as i16);
@@ -241,6 +251,17 @@ fn main() -> Result<(), String> {
 
     let mut key_map: KeyMap = HashMap::new();
 
+    let mut controller_right_x = 0;
+    let mut controller_right_y = 0;
+
+    let controller = match check_for_controllers(controller_system) {
+        Ok(controller) => Some(controller),
+        Err(err) => {
+            println!("error connecting controller: {err}");
+            None
+        }
+    };
+
     'game_loop: loop {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
@@ -252,8 +273,31 @@ fn main() -> Result<(), String> {
             tachometer_angle.to_radians(),
         )?;
 
+        let hand_target = if controller.is_some() {
+            let x = ((controller_right_x as f64) / (i16::MAX as f64)) * 1.5;
+            let y = ((controller_right_y as f64) / (i16::MAX as f64)) * 1.5;
+            let x = if x > 1.0 {
+                1.0
+            } else if x < -1.0 {
+                -1.0
+            } else {
+                x
+            };
+            let y = if y > 1.0 {
+                1.0
+            } else if y < -1.0 {
+                -1.0
+            } else {
+                y
+            };
+
+            (x, y)
+        } else {
+            hand_target(&key_map)
+        };
+
         let gear_target = if gear_held {
-            clamp_hand(hand_target(&key_map), hand_offset)
+            clamp_hand(hand_target, hand_offset)
         } else {
             gear_resting_target(gear_offset)
         };
@@ -275,9 +319,9 @@ fn main() -> Result<(), String> {
         )?;
 
         let hand_target = if gear_held {
-            clamp_hand(hand_target(&key_map), hand_offset)
+            clamp_hand(hand_target, hand_offset)
         } else {
-            hand_target(&key_map)
+            hand_target
         };
 
         let new_hand_offset = draw_hand(
@@ -287,7 +331,7 @@ fn main() -> Result<(), String> {
             hand_offset,
             hand_target,
             hand_alpha,
-            key_down(&key_map, Keycode::Space),
+            key_down(&key_map, KeyCode::Space),
         )?;
 
         canvas.present();
@@ -302,6 +346,10 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {
                     keycode: Some(key), ..
                 } => {
+                    let Ok(key) = key.try_into() else {
+                        println!("unrecognized key {key:#?}");
+                        continue;
+                    };
                     let state = match key_map.get(&key) {
                         Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
                         Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
@@ -311,6 +359,54 @@ fn main() -> Result<(), String> {
                 Event::KeyUp {
                     keycode: Some(key), ..
                 } => {
+                    let Ok(key) = key.try_into() else {
+                        println!("unrecognized key {key:#?}");
+                        continue;
+                    };
+                    let state = match key_map.get(&key) {
+                        Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
+                        Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
+                        None => unreachable!(),
+                    };
+                    key_map.insert(key, state);
+                }
+                Event::ControllerAxisMotion {
+                    timestamp: _,
+                    which: _,
+                    axis,
+                    value,
+                } => match axis {
+                    Axis::LeftX => {}
+                    Axis::LeftY => {}
+                    Axis::RightX => controller_right_x = value,
+                    Axis::RightY => controller_right_y = value,
+                    Axis::TriggerLeft => {}
+                    Axis::TriggerRight => {}
+                },
+                Event::ControllerButtonDown {
+                    timestamp: _,
+                    which: _,
+                    button,
+                } => {
+                    let Ok(key) = button.try_into() else {
+                        println!("unrecognized key {button:#?}");
+                        continue;
+                    };
+                    let state = match key_map.get(&key) {
+                        Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
+                        Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
+                    };
+                    key_map.insert(key, state);
+                }
+                Event::ControllerButtonUp {
+                    timestamp: _,
+                    which: _,
+                    button,
+                } => {
+                    let Ok(key) = button.try_into() else {
+                        println!("unrecognized key {button:#?}");
+                        continue;
+                    };
                     let state = match key_map.get(&key) {
                         Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
                         Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
@@ -322,7 +418,7 @@ fn main() -> Result<(), String> {
             }
         }
 
-        update_tachometer_angle(&mut tachometer_angle, key_down(&key_map, Keycode::LShift));
+        update_tachometer_angle(&mut tachometer_angle, key_down(&key_map, KeyCode::Shift));
 
         hand_alpha += 12.0 / 60.0;
         if hand_alpha > 1.0 {
@@ -342,12 +438,20 @@ fn main() -> Result<(), String> {
             gear_offset = new_gear_offset;
         }
 
-        if key_changed(&key_map, Keycode::Space) {
+        if controller.is_some() {
+            hand_alpha = 0.25;
+            hand_offset = new_hand_offset;
+
+            gear_alpha = 0.25;
+            gear_offset = new_gear_offset;
+        }
+
+        if key_changed(&key_map, KeyCode::Space) {
             let distance = ((new_hand_offset.0 - new_gear_offset.0).powi(2)
                 + (new_hand_offset.1 - new_gear_offset.1).powi(2))
             .sqrt();
 
-            if distance < 0.5 && key_down(&key_map, Keycode::Space) {
+            if distance < 0.5 && key_down(&key_map, KeyCode::Space) {
                 gear_held = true;
             } else {
                 gear_held = false;
@@ -355,7 +459,7 @@ fn main() -> Result<(), String> {
         }
 
         change_hand(&mut key_map);
-        change_key(&mut key_map, Keycode::Space);
+        change_key(&mut key_map, KeyCode::Space);
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

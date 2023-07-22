@@ -1,6 +1,4 @@
-use sdl2::keyboard::Keycode;
-
-use crate::key_map::{change_key, key_changed, key_down, KeyMap};
+use crate::key_map::{change_key, key_changed, key_down, KeyCode, KeyMap};
 
 pub fn clamp_hand(target: (f64, f64), old: (f64, f64)) -> (f64, f64) {
     if target.1 > -0.5 && target.1 < 0.5 {
@@ -27,15 +25,15 @@ pub fn clamp_hand(target: (f64, f64), old: (f64, f64)) -> (f64, f64) {
 }
 
 pub fn hand_target(key_map: &KeyMap) -> (f64, f64) {
-    let a = key_down(&key_map, Keycode::A);
-    let d = key_down(&key_map, Keycode::D);
+    let a = key_down(&key_map, KeyCode::A);
+    let d = key_down(&key_map, KeyCode::D);
     let target_x = match (a, d) {
         (true, true) | (false, false) => 0.0,
         (true, false) => -1.0,
         (false, true) => 1.0,
     };
-    let w = key_down(&key_map, Keycode::W);
-    let s = key_down(&key_map, Keycode::S);
+    let w = key_down(&key_map, KeyCode::W);
+    let s = key_down(&key_map, KeyCode::S);
     let target_y = match (w, s) {
         (true, true) | (false, false) => 0.0,
         (true, false) => -1.0,
@@ -46,18 +44,19 @@ pub fn hand_target(key_map: &KeyMap) -> (f64, f64) {
 }
 
 pub fn change_hand(key_map: &mut KeyMap) {
-    change_key(key_map, Keycode::W);
-    change_key(key_map, Keycode::A);
-    change_key(key_map, Keycode::S);
-    change_key(key_map, Keycode::D);
+    change_key(key_map, KeyCode::W);
+    change_key(key_map, KeyCode::A);
+    change_key(key_map, KeyCode::S);
+    change_key(key_map, KeyCode::D);
+    change_key(key_map, KeyCode::Space);
 }
 
 pub fn hand_changed(key_map: &KeyMap) -> bool {
-    let w = key_changed(&key_map, Keycode::W);
-    let a = key_changed(&key_map, Keycode::A);
-    let s = key_changed(&key_map, Keycode::S);
-    let d = key_changed(&key_map, Keycode::D);
-    let space = key_changed(&key_map, Keycode::Space);
+    let w = key_changed(&key_map, KeyCode::W);
+    let a = key_changed(&key_map, KeyCode::A);
+    let s = key_changed(&key_map, KeyCode::S);
+    let d = key_changed(&key_map, KeyCode::D);
+    let space = key_changed(&key_map, KeyCode::Space);
 
     w || a || s || d || space
 }
