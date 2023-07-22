@@ -3,11 +3,13 @@
 mod gear;
 mod hand;
 mod key_map;
+mod lerp;
 mod macros;
 
-use gear::{gear_resting_target, gear_state};
-use hand::{change_hand, clamp_hand, hand_changed, hand_target};
+use gear::Gear;
+use hand::{clamp, Hand};
 use key_map::{change_key, key_changed, key_down, KeyCode, KeyMap};
+use lerp::lerp2d;
 use sdl2::controller::{Axis, GameController};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -28,11 +30,11 @@ fn prepare_window(sdl_context: &Sdl) -> Result<Window, String> {
     let video_subsystem = sdl_context.video()?;
     let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG)?;
     let mut window = video_subsystem
-        .window("car-demo", 1000, 800)
+        .window("car-demo", 1920, 800)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
-    window.set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
+    window.set_fullscreen(sdl2::video::FullscreenType::Off)?;
     Ok(window)
 }
 
@@ -49,22 +51,17 @@ fn draw_gearstick(
     texture: &Texture,
     position: (i16, i16),
     offset: (f64, f64),
-    target: (f64, f64),
-    alpha: f64,
-) -> Result<(f64, f64), String> {
+) -> Result<(), String> {
     canvas.copy(
         texture,
         rect!(128, 0, 64, 64),
         rect!(position.0, position.1, 160, 160),
     )?;
 
-    let x = lerp(alpha, offset.0, target.0);
-    let y = lerp(alpha, offset.1, target.1);
-
     let start_x = position.0 + 80;
     let start_y = position.1 + 80;
-    let end_x = position.0 + 80 + (x * 128.0) as i16;
-    let end_y = position.1 + 80 + (y * 128.0) as i16;
+    let end_x = position.0 + 80 + (offset.0 * 128.0) as i16;
+    let end_y = position.1 + 80 + (offset.1 * 128.0) as i16;
 
     if !(start_x == end_x && start_y == end_y) {
         canvas.filled_circle(start_x, start_y, 32, Color::RGB(178, 16, 48))?;
@@ -75,18 +72,14 @@ fn draw_gearstick(
         texture,
         rect!(64, 0, 64, 64),
         rect!(
-            f64::from(position.0) + x * 128.0,
-            f64::from(position.1) + y * 128.0,
+            f64::from(position.0) + offset.0 * 128.0,
+            f64::from(position.1) + offset.1 * 128.0,
             160,
             160
         ),
     )?;
 
-    Ok((x, y))
-}
-
-fn lerp(alpha: f64, position: f64, target: f64) -> f64 {
-    position + alpha * (target - position)
+    Ok(())
 }
 
 fn draw_hand(
@@ -94,48 +87,43 @@ fn draw_hand(
     texture: &Texture,
     position: (i16, i16),
     offset: (f64, f64),
-    target: (f64, f64),
-    alpha: f64,
     grabbing: bool,
-) -> Result<(f64, f64), String> {
+) -> Result<(), String> {
     let sprite_offset = if grabbing { 64 } else { 0 };
-
-    let x = lerp(alpha, offset.0, target.0);
-    let y = lerp(alpha, offset.1, target.1);
 
     canvas.copy(
         texture,
         rect!(sprite_offset, 64, 64, 64),
         rect!(
-            f64::from(position.0) + x * 128.0,
-            f64::from(position.1) + y * 128.0,
+            f64::from(position.0) + offset.0 * 128.0,
+            f64::from(position.1) + offset.1 * 128.0,
             128 + 32,
             128 + 32
         ),
     )?;
 
-    Ok((x, y))
+    Ok(())
 }
 
 fn draw_gear_state(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    gear: (f64, f64),
+    gear: &Gear,
 ) -> Result<(), String> {
-    let state = gear_state(gear);
+    let state = gear.state();
 
     let initial_x = 128;
     let initial_y = 64;
 
     let (x, y) = match state {
-        gear::Gear::Neutral => (0, 0),
-        gear::Gear::Rocket => (1, 0),
-        gear::Gear::First => (0, 1),
-        gear::Gear::Second => (1, 1),
-        gear::Gear::Third => (0, 2),
-        gear::Gear::Fourth => (1, 2),
-        gear::Gear::Fifth => (0, 3),
+        gear::GearState::Neutral => (0, 0),
+        gear::GearState::Rocket => (1, 0),
+        gear::GearState::First => (0, 1),
+        gear::GearState::Second => (1, 1),
+        gear::GearState::Third => (0, 2),
+        gear::GearState::Fourth => (1, 2),
+        gear::GearState::Fifth => (0, 3),
     };
 
     canvas.copy(
@@ -262,12 +250,18 @@ fn main() -> Result<(), String> {
 
     let mut tachometer_angle: f64 = 360.0;
 
-    let mut hand_alpha = 0.0;
-    let mut hand_offset = (0.0, 0.0);
+    let mut hand = Hand {
+        alpha: 0.0,
+        offset: (0.0, 0.0),
+        target: (0.0, 0.0),
+    };
 
-    let mut gear_alpha = 0.0;
-    let mut gear_offset = (0.0, 0.0);
-    let mut gear_held = false;
+    let mut gear = Gear {
+        alpha: 0.0,
+        held: false,
+        offset: (0.0, 0.0),
+        target: (0.0, 0.0),
+    };
 
     let mut key_map: KeyMap = HashMap::new();
 
@@ -282,6 +276,8 @@ fn main() -> Result<(), String> {
         }
     };
 
+    let gearstick_position = (width - 128 * 4, padded_end(height, 160));
+
     'game_loop: loop {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
@@ -295,65 +291,46 @@ fn main() -> Result<(), String> {
             tachometer_angle.to_radians(),
         )?;
 
-        let hand_target = if controller.is_some() {
-            let x = (f64::from(controller_right_x) / f64::from(i16::MAX)) * 1.5;
-            let y = (f64::from(controller_right_y) / f64::from(i16::MAX)) * 1.5;
-            let x = if x > 1.0 {
-                1.0
-            } else if x < -1.0 {
-                -1.0
-            } else {
-                x
-            };
-            let y = if y > 1.0 {
-                1.0
-            } else if y < -1.0 {
-                -1.0
-            } else {
-                y
-            };
-
-            (x, y)
+        hand.target = if controller.is_some() {
+            Hand::gamepad_target(controller_right_x, controller_right_y)
         } else {
-            hand_target(&key_map)
+            Hand::keyboard_target(&key_map)
         };
 
-        let gear_target = if gear_held {
-            clamp_hand(hand_target, hand_offset)
+        gear.target = if gear.held {
+            clamp(hand.target, hand.offset)
         } else {
-            gear_resting_target(gear_offset)
+            gear.resting_target()
         };
 
-        let new_gear_offset = draw_gearstick(
+        let smoothed_gear_offset = lerp2d(gear.alpha, gear.offset, gear.target);
+
+        draw_gearstick(
             &mut canvas,
             &texture,
-            (width - 128 * 4, padded_end(height, 160)),
-            gear_offset,
-            gear_target,
-            gear_alpha,
+            gearstick_position,
+            smoothed_gear_offset,
+        )?;
+
+        if gear.held {
+            hand.target = clamp(hand.target, hand.offset)
+        }
+
+        let smoothed_hand_offset = lerp2d(hand.alpha, hand.offset, hand.target);
+
+        draw_hand(
+            &mut canvas,
+            &texture,
+            gearstick_position,
+            smoothed_hand_offset,
+            key_down(&key_map, &KeyCode::Space),
         )?;
 
         draw_gear_state(
             &mut canvas,
             &texture,
             (center(width, 256), padded_end(height, 128)),
-            new_gear_offset,
-        )?;
-
-        let hand_target = if gear_held {
-            clamp_hand(hand_target, hand_offset)
-        } else {
-            hand_target
-        };
-
-        let new_hand_offset = draw_hand(
-            &mut canvas,
-            &texture,
-            (width - 128 * 4, padded_end(height, 160)),
-            hand_offset,
-            hand_target,
-            hand_alpha,
-            key_down(&key_map, &KeyCode::Space),
+            &gear,
         )?;
 
         canvas.present();
@@ -392,16 +369,6 @@ fn main() -> Result<(), String> {
                     };
                     key_map.insert(key, state);
                 }
-                Event::ControllerAxisMotion {
-                    timestamp: _,
-                    which: _,
-                    axis,
-                    value,
-                } => match axis {
-                    Axis::RightX => controller_right_x = value,
-                    Axis::RightY => controller_right_y = value,
-                    _ => {}
-                },
                 Event::ControllerButtonDown {
                     timestamp: _,
                     which: _,
@@ -433,51 +400,46 @@ fn main() -> Result<(), String> {
                     };
                     key_map.insert(key, state);
                 }
+                Event::ControllerAxisMotion {
+                    timestamp: _,
+                    which: _,
+                    axis,
+                    value,
+                } => match axis {
+                    Axis::RightX => controller_right_x = value,
+                    Axis::RightY => controller_right_y = value,
+                    _ => {}
+                },
                 _ => (),
             }
         }
 
+        hand.tick(12.0 / 60.0);
+        gear.tick(12.0 / 60.0);
+
+        if Hand::has_changed(&key_map) {
+            hand.reset(0.0, smoothed_hand_offset);
+            gear.reset(0.0, smoothed_gear_offset);
+        } else if controller.is_some() {
+            hand.reset(0.25, smoothed_hand_offset);
+            gear.reset(0.25, smoothed_gear_offset);
+        }
+
         update_tachometer_angle(&mut tachometer_angle, key_down(&key_map, &KeyCode::Shift));
 
-        hand_alpha += 12.0 / 60.0;
-        if hand_alpha > 1.0 {
-            hand_alpha = 1.0;
-        }
-
-        gear_alpha += 12.0 / 60.0;
-        if gear_alpha > 1.0 {
-            gear_alpha = 1.0;
-        }
-
-        if hand_changed(&key_map) {
-            hand_alpha = 0.0;
-            hand_offset = new_hand_offset;
-
-            gear_alpha = 0.0;
-            gear_offset = new_gear_offset;
-        }
-
-        if controller.is_some() {
-            hand_alpha = 0.25;
-            hand_offset = new_hand_offset;
-
-            gear_alpha = 0.25;
-            gear_offset = new_gear_offset;
-        }
-
         if key_changed(&key_map, &KeyCode::Space) {
-            let distance = ((new_hand_offset.0 - new_gear_offset.0).powi(2)
-                + (new_hand_offset.1 - new_gear_offset.1).powi(2))
-            .sqrt();
+            let x_square = (smoothed_hand_offset.0 - smoothed_gear_offset.0).powi(2);
+            let y_square = (smoothed_hand_offset.1 - smoothed_gear_offset.1).powi(2);
+            let distance = (x_square + y_square).sqrt();
 
             if distance < 0.5 && key_down(&key_map, &KeyCode::Space) {
-                gear_held = true;
+                gear.held = true;
+                gear.reset(0.0, smoothed_gear_offset);
             } else {
-                gear_held = false;
+                gear.held = false;
             }
         }
-
-        change_hand(&mut key_map);
+        Hand::update_keys(&mut key_map);
         change_key(&mut key_map, KeyCode::Space);
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
