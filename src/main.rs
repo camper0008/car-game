@@ -1,9 +1,11 @@
 #![warn(clippy::unwrap_used)]
 
+mod gear;
 mod hand;
 mod key_map;
 mod macros;
 
+use gear::gear_resting_state;
 use hand::{change_hand, clamp_hand, hand_changed, hand_target};
 use key_map::{change_key, key_changed, key_down, KeyMap};
 use sdl2::event::Event;
@@ -216,7 +218,7 @@ fn main() -> Result<(), String> {
         let gear_target = if gear_held {
             clamp_hand(hand_target(&key_map), hand_offset)
         } else {
-            (0.0, 0.0)
+            gear_resting_state(gear_offset)
         };
 
         let new_gear_offset = draw_gearstick(
