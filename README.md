@@ -1,22 +1,24 @@
 # car-demo
 
-controls:
-keyboard:
+## controls
+
+### keyboard
+
 - WASD to move hand 
 - space to grab 
 - shift to accelerate
 - esc to quit
 
-controller:
+### controller
 - right stick controls hand
 - right bumper to grab stick
 
-dependencies:
+## dependencies
 
 `sdl2`
 `sdl2_gfx`
 `sdl2_image`
 
-arch installation:
+### arch installation:
 
 `pacman -S sdl2 sdl2_gfx sdl2_image`
