@@ -5,7 +5,7 @@ mod hand;
 mod key_map;
 mod macros;
 
-use gear::gear_resting_state;
+use gear::{gear_resting_target, gear_state};
 use hand::{change_hand, clamp_hand, hand_changed, hand_target};
 use key_map::{change_key, key_changed, key_down, KeyMap};
 use sdl2::event::Event;
@@ -116,6 +116,36 @@ fn draw_hand(
     Ok((x, y))
 }
 
+fn draw_gear_state(
+    canvas: &mut WindowCanvas,
+    texture: &Texture,
+    position: (i16, i16),
+    gear: (f64, f64),
+) -> Result<(), String> {
+    let state = gear_state(gear);
+
+    let initial_x = 128;
+    let initial_y = 64;
+
+    let (x, y) = match state {
+        gear::Gear::Neutral => (0, 0),
+        gear::Gear::Rocket => (1, 0),
+        gear::Gear::First => (0, 1),
+        gear::Gear::Second => (1, 1),
+        gear::Gear::Third => (0, 2),
+        gear::Gear::Fourth => (1, 2),
+        gear::Gear::Fifth => (0, 3),
+    };
+
+    canvas.copy(
+        &texture,
+        rect!(initial_x + x * 32, initial_y + y * 16, 32, 16),
+        rect!(position.0, position.1, 256, 128),
+    )?;
+
+    Ok(())
+}
+
 fn draw_tachometer(
     canvas: &mut WindowCanvas,
     texture: &Texture,
@@ -182,12 +212,19 @@ fn update_tachometer_angle(angle: &mut f64, accelerating: bool) {
     }
 }
 
+fn padded_end(max: i16, length: i16) -> i16 {
+    max - 256 - length / 2
+}
+
+fn center(max: i16, length: i16) -> i16 {
+    (max / 2) - length / 2
+}
+
 fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let window = prepare_window(&sdl_context)?;
     let (width, height) = window.size();
     let (width, height) = (width as i16, height as i16);
-    let center_height = (height / 2) - 64 + 128 * 1;
     let mut canvas = prepare_canvas(window)?;
 
     let texture_creator = canvas.texture_creator();
@@ -211,23 +248,30 @@ fn main() -> Result<(), String> {
         draw_tachometer(
             &mut canvas,
             &texture,
-            (128 * 1, center_height),
+            (128 * 1, padded_end(height, 256)),
             tachometer_angle.to_radians(),
         )?;
 
         let gear_target = if gear_held {
             clamp_hand(hand_target(&key_map), hand_offset)
         } else {
-            gear_resting_state(gear_offset)
+            gear_resting_target(gear_offset)
         };
 
         let new_gear_offset = draw_gearstick(
             &mut canvas,
             &texture,
-            (width - 128 * 4, center_height),
+            (width - 128 * 4, padded_end(height, 160)),
             gear_offset,
             gear_target,
             gear_alpha,
+        )?;
+
+        draw_gear_state(
+            &mut canvas,
+            &texture,
+            (center(width, 256), padded_end(height, 128)),
+            new_gear_offset,
         )?;
 
         let hand_target = if gear_held {
@@ -239,7 +283,7 @@ fn main() -> Result<(), String> {
         let new_hand_offset = draw_hand(
             &mut canvas,
             &texture,
-            (width - 128 * 4, center_height),
+            (width - 128 * 4, padded_end(height, 160)),
             hand_offset,
             hand_target,
             hand_alpha,
