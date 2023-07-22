@@ -4,7 +4,7 @@ mod hand;
 mod key_map;
 mod macros;
 
-use hand::{change_hand, hand_changed, hand_target};
+use hand::{change_hand, clamp_hand, hand_changed, hand_target};
 use key_map::{change_key, key_changed, key_down, KeyMap};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -214,7 +214,7 @@ fn main() -> Result<(), String> {
         )?;
 
         let gear_target = if gear_held {
-            hand_target(&key_map)
+            clamp_hand(hand_target(&key_map), hand_offset)
         } else {
             (0.0, 0.0)
         };
@@ -228,12 +228,18 @@ fn main() -> Result<(), String> {
             gear_alpha,
         )?;
 
+        let hand_target = if gear_held {
+            clamp_hand(hand_target(&key_map), hand_offset)
+        } else {
+            hand_target(&key_map)
+        };
+
         let new_hand_offset = draw_hand(
             &mut canvas,
             &texture,
             (width - 128 * 4, center_height),
             hand_offset,
-            hand_target(&key_map),
+            hand_target,
             hand_alpha,
             key_down(&key_map, Keycode::Space),
         )?;
@@ -291,9 +297,6 @@ fn main() -> Result<(), String> {
         }
 
         if key_changed(&key_map, Keycode::Space) {
-            gear_alpha = 0.0;
-            gear_offset = new_gear_offset;
-
             let distance = ((new_hand_offset.0 - new_gear_offset.0).powi(2)
                 + (new_hand_offset.1 - new_gear_offset.1).powi(2))
             .sqrt();
