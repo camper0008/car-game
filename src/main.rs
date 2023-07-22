@@ -2,13 +2,13 @@
 
 mod gear;
 mod hand;
-mod key_map;
+mod input;
 mod lerp;
 mod macros;
 
 use gear::Gear;
 use hand::{clamp, Hand};
-use key_map::{change_key, key_changed, key_down, KeyCode, KeyMap};
+use input::{Action, Input, InputState};
 use lerp::lerp2d;
 use sdl2::controller::{Axis, GameController};
 use sdl2::event::Event;
@@ -20,11 +20,8 @@ use sdl2::rect::Rect;
 use sdl2::render::{Texture, WindowCanvas};
 use sdl2::video::Window;
 use sdl2::{GameControllerSubsystem, Sdl};
-use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
-
-use crate::key_map::KeyState;
 
 fn prepare_window(sdl_context: &Sdl) -> Result<Window, String> {
     let video_subsystem = sdl_context.video()?;
@@ -234,7 +231,7 @@ fn check_for_controllers(system: &GameControllerSubsystem) -> Result<GameControl
     system.open(0).map_err(|e| e.to_string())
 }
 
-fn poll_events(sdl_context: &Sdl, key_map: &mut KeyMap) -> Result<(), String> {
+fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
     for event in sdl_context.event_pump()?.poll_iter() {
         match event {
             Event::Quit { .. }
@@ -242,7 +239,7 @@ fn poll_events(sdl_context: &Sdl, key_map: &mut KeyMap) -> Result<(), String> {
                 keycode: Some(Keycode::Escape),
                 ..
             } => {
-                key_map.insert(KeyCode::Quit, KeyState::Down);
+                input.insert(Action::Quit, InputState::Active);
             }
             Event::KeyDown {
                 keycode: Some(key), ..
@@ -251,25 +248,13 @@ fn poll_events(sdl_context: &Sdl, key_map: &mut KeyMap) -> Result<(), String> {
                         println!("unrecognized key {key:#?}");
                         continue;
                     };
-                let state = match key_map.get(&key) {
-                    Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
-                    Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
+                let state = match input.get(&key) {
+                    Some(InputState::Inactive | InputState::JustInactive) | None => {
+                        InputState::JustActive
+                    }
+                    Some(InputState::JustActive | InputState::Active) => InputState::Active,
                 };
-                key_map.insert(key, state);
-            }
-            Event::KeyUp {
-                keycode: Some(key), ..
-            } => {
-                let Ok(key) = key.try_into() else {
-                        println!("unrecognized key {key:#?}");
-                        continue;
-                    };
-                let state = match key_map.get(&key) {
-                    Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
-                    Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
-                    None => unreachable!(),
-                };
-                key_map.insert(key, state);
+                input.insert(key, state);
             }
             Event::ControllerButtonDown {
                 timestamp: _,
@@ -280,11 +265,28 @@ fn poll_events(sdl_context: &Sdl, key_map: &mut KeyMap) -> Result<(), String> {
                         println!("unrecognized key {button:#?}");
                         continue;
                     };
-                let state = match key_map.get(&key) {
-                    Some(KeyState::Up | KeyState::WasDown) | None => KeyState::WasUp,
-                    Some(KeyState::WasUp | KeyState::Down) => KeyState::Down,
+                let state = match input.get(&key) {
+                    Some(InputState::Inactive | InputState::JustInactive) | None => {
+                        InputState::JustActive
+                    }
+                    Some(InputState::JustActive | InputState::Active) => InputState::Active,
                 };
-                key_map.insert(key, state);
+                input.insert(key, state);
+            }
+
+            Event::KeyUp {
+                keycode: Some(key), ..
+            } => {
+                let Ok(key) = key.try_into() else {
+                        println!("unrecognized key {key:#?}");
+                        continue;
+                    };
+                let state = match input.get(&key) {
+                    Some(InputState::Active | InputState::JustActive) => InputState::JustInactive,
+                    Some(InputState::Inactive | InputState::JustInactive) => InputState::Inactive,
+                    None => unreachable!(),
+                };
+                input.insert(key, state);
             }
             Event::ControllerButtonUp {
                 timestamp: _,
@@ -295,21 +297,22 @@ fn poll_events(sdl_context: &Sdl, key_map: &mut KeyMap) -> Result<(), String> {
                         println!("unrecognized key {button:#?}");
                         continue;
                     };
-                let state = match key_map.get(&key) {
-                    Some(KeyState::Down | KeyState::WasUp) => KeyState::WasDown,
-                    Some(KeyState::Up | KeyState::WasDown) => KeyState::Up,
+                let state = match input.get(&key) {
+                    Some(InputState::Active | InputState::JustActive) => InputState::JustInactive,
+                    Some(InputState::Inactive | InputState::JustInactive) => InputState::Inactive,
                     None => unreachable!(),
                 };
-                key_map.insert(key, state);
+                input.insert(key, state);
             }
+
             Event::ControllerAxisMotion {
                 timestamp: _,
                 which: _,
                 axis,
-                value: _,
+                value,
             } => match axis {
-                Axis::RightX => todo!(), //controller_right_x = value,
-                Axis::RightY => todo!(), //controller_right_y = value,
+                Axis::RightX => input.update_right_joystick_from_raw_x(value),
+                Axis::RightY => input.update_right_joystick_from_raw_y(value),
                 _ => {}
             },
             _ => (),
@@ -348,10 +351,7 @@ fn main() -> Result<(), String> {
         target: (0.0, 0.0),
     };
 
-    let mut key_map: KeyMap = HashMap::new();
-
-    let mut controller_right_x = 0;
-    let mut controller_right_y = 0;
+    let mut input = Input::new();
 
     let controller = match check_for_controllers(&controller_system) {
         Ok(controller) => Some(controller),
@@ -392,7 +392,7 @@ fn main() -> Result<(), String> {
             &texture,
             gearstick_position,
             smoothed_hand_offset,
-            key_down(&key_map, &KeyCode::Space),
+            input.action_active(&Action::Grab),
         )?;
 
         draw_gear_state(
@@ -404,16 +404,16 @@ fn main() -> Result<(), String> {
 
         canvas.present();
 
-        poll_events(&sdl_context, &mut key_map)?;
+        poll_events(&sdl_context, &mut input)?;
 
-        if key_map.get(&KeyCode::Quit).is_some() {
+        if input.get(&Action::Quit).is_some() {
             break 'game_loop Ok(());
         }
 
         hand.target = if controller.is_some() {
-            Hand::gamepad_target(controller_right_x, controller_right_y)
+            Hand::gamepad_target(&input)
         } else {
-            Hand::keyboard_target(&key_map)
+            Hand::keyboard_target(&input)
         };
 
         if gear.held {
@@ -427,7 +427,7 @@ fn main() -> Result<(), String> {
         hand.tick(12.0 / 60.0);
         gear.tick(12.0 / 60.0);
 
-        if Hand::has_changed(&key_map) {
+        if Hand::has_changed(&input) {
             hand.reset(0.0, smoothed_hand_offset);
             gear.reset(0.0, smoothed_gear_offset);
         } else if controller.is_some() {
@@ -435,22 +435,24 @@ fn main() -> Result<(), String> {
             gear.reset(0.25, smoothed_gear_offset);
         }
 
-        update_tachometer_angle(&mut tachometer_angle, key_down(&key_map, &KeyCode::Shift));
+        update_tachometer_angle(
+            &mut tachometer_angle,
+            input.action_active(&Action::Accelerate),
+        );
 
-        if key_changed(&key_map, &KeyCode::Space) {
+        if input.action_changed(&Action::Grab) {
             let x_square = (smoothed_hand_offset.0 - smoothed_gear_offset.0).powi(2);
             let y_square = (smoothed_hand_offset.1 - smoothed_gear_offset.1).powi(2);
             let distance = (x_square + y_square).sqrt();
 
-            if distance < 0.5 && key_down(&key_map, &KeyCode::Space) {
+            if distance < 0.5 && input.action_active(&Action::Grab) {
                 gear.held = true;
                 gear.reset(0.0, smoothed_gear_offset);
             } else {
                 gear.held = false;
             }
         }
-        Hand::update_keys(&mut key_map);
-        change_key(&mut key_map, KeyCode::Space);
+        Hand::action_tick(&mut input);
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

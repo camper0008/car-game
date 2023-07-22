@@ -1,4 +1,4 @@
-use crate::key_map::{change_key, key_changed, key_down, KeyCode, KeyMap};
+use crate::input::{Action, Input};
 
 pub struct Hand {
     pub alpha: f64,
@@ -7,38 +7,19 @@ pub struct Hand {
 }
 
 impl Hand {
-    pub fn gamepad_target(x: i16, y: i16) -> (f64, f64) {
-        let x = (f64::from(x) / f64::from(i16::MAX)) * 1.5;
-        let y = (f64::from(y) / f64::from(i16::MAX)) * 1.5;
-
-        let x = if x > 1.0 {
-            1.0
-        } else if x < -1.0 {
-            -1.0
-        } else {
-            x
-        };
-        let y = if y > 1.0 {
-            1.0
-        } else if y < -1.0 {
-            -1.0
-        } else {
-            y
-        };
-
-        (x, y)
+    pub fn gamepad_target(input: &Input) -> (f64, f64) {
+        input.right_joystick
     }
-
-    pub fn keyboard_target(key_map: &KeyMap) -> (f64, f64) {
-        let a = key_down(key_map, &KeyCode::A);
-        let d = key_down(key_map, &KeyCode::D);
+    pub fn keyboard_target(input: &Input) -> (f64, f64) {
+        let a = input.action_active(&Action::Left);
+        let d = input.action_active(&Action::Right);
         let target_x = match (a, d) {
             (true, true) | (false, false) => 0.0,
             (true, false) => -1.0,
             (false, true) => 1.0,
         };
-        let w = key_down(key_map, &KeyCode::W);
-        let s = key_down(key_map, &KeyCode::S);
+        let w = input.action_active(&Action::Up);
+        let s = input.action_active(&Action::Down);
         let target_y = match (w, s) {
             (true, true) | (false, false) => 0.0,
             (true, false) => -1.0,
@@ -48,20 +29,20 @@ impl Hand {
         (target_x, target_y)
     }
 
-    pub fn update_keys(key_map: &mut KeyMap) {
-        change_key(key_map, KeyCode::W);
-        change_key(key_map, KeyCode::A);
-        change_key(key_map, KeyCode::S);
-        change_key(key_map, KeyCode::D);
-        change_key(key_map, KeyCode::Space);
+    pub fn action_tick(input: &mut Input) {
+        input.action_tick(Action::Up);
+        input.action_tick(Action::Left);
+        input.action_tick(Action::Down);
+        input.action_tick(Action::Right);
+        input.action_tick(Action::Grab);
     }
 
-    pub fn has_changed(key_map: &KeyMap) -> bool {
-        let w = key_changed(key_map, &KeyCode::W);
-        let a = key_changed(key_map, &KeyCode::A);
-        let s = key_changed(key_map, &KeyCode::S);
-        let d = key_changed(key_map, &KeyCode::D);
-        let space = key_changed(key_map, &KeyCode::Space);
+    pub fn has_changed(input: &Input) -> bool {
+        let w = input.action_changed(&Action::Up);
+        let a = input.action_changed(&Action::Left);
+        let s = input.action_changed(&Action::Down);
+        let d = input.action_changed(&Action::Right);
+        let space = input.action_changed(&Action::Grab);
 
         w || a || s || d || space
     }
