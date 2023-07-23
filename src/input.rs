@@ -56,21 +56,23 @@ impl TryFrom<sdl2::mouse::MouseButton> for Action {
 
 pub struct Input {
     action_map: HashMap<Action, ActionState>,
+    mouse_sensitivity: f64,
     pub hand: (f64, f64),
 }
 
 impl Input {
-    pub fn new() -> Self {
+    pub fn with_sensitivity(mouse_sensitivity: f64) -> Self {
         Self {
             action_map: HashMap::new(),
             hand: (0.0, 0.0),
+            mouse_sensitivity,
         }
     }
 
     pub fn update_hand_relatively(&mut self, x: i32, y: i32) {
-        let reduced_x = self.hand.0 + (x as f64) / 256.0;
+        let reduced_x = self.hand.0 + (x as f64) / self.mouse_sensitivity;
         let reduced_x = clamp_f64(reduced_x, -1.0, 1.0);
-        let reduced_y = self.hand.1 + (y as f64) / 256.0;
+        let reduced_y = self.hand.1 + (y as f64) / self.mouse_sensitivity;
         let reduced_y = clamp_f64(reduced_y, -1.0, 1.0);
 
         self.hand = (reduced_x, reduced_y);

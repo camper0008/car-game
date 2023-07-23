@@ -3,6 +3,9 @@ pub use clap::Parser;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    #[arg(short, long)]
+    #[arg(short, long, default_value_t = 128.0)]
+    pub mouse_sensitivity: f64,
+
+    #[arg(short, long, default_value_t = false)]
     pub windowed: bool,
 }

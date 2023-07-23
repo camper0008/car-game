@@ -379,7 +379,7 @@ fn main() -> Result<(), String> {
         target: (0.0, 0.0),
     };
 
-    let mut input = Input::new();
+    let mut input = Input::with_sensitivity(cli.mouse_sensitivity);
 
     if let Err(err) = check_for_controllers(&controller_system) {
         println!("error connecting controller: {err}");
@@ -390,7 +390,7 @@ fn main() -> Result<(), String> {
     'game_loop: loop {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
-        sdl_context.mouse().show_cursor(false);
+        sdl_context.mouse().set_relative_mouse_mode(true);
 
         draw_tachometer(
             &mut canvas,
