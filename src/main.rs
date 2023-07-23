@@ -454,7 +454,7 @@ fn main() -> Result<(), String> {
             let target = if input.action_active(&Action::Clutch) {
                 clamp_clutch_down(hand.target, hand.offset)
             } else {
-                clamp_clutch_up(hand.target, gear.state())
+                clamp_clutch_up(hand.target, hand.offset, gear.state())
             };
             hand.target = target;
             gear.target = target;

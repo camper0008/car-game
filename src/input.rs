@@ -30,8 +30,8 @@ impl TryFrom<sdl2::keyboard::Keycode> for Action {
             sdl2::keyboard::Keycode::S | sdl2::keyboard::Keycode::Down => Ok(Action::Down),
             sdl2::keyboard::Keycode::D | sdl2::keyboard::Keycode::Right => Ok(Action::Right),
             sdl2::keyboard::Keycode::Space => Ok(Action::Grab),
-            sdl2::keyboard::Keycode::LShift => Ok(Action::Accelerate),
-            sdl2::keyboard::Keycode::Tab => Ok(Action::Clutch),
+            sdl2::keyboard::Keycode::LShift => Ok(Action::Clutch),
+            sdl2::keyboard::Keycode::Return => Ok(Action::Accelerate),
             key => Err(format!("unrecognized keycode: {key:#?}")),
         }
     }

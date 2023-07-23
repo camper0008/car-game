@@ -75,9 +75,21 @@ fn clamp_f64(value: f64, min: f64, max: f64) -> f64 {
     }
 }
 
-pub fn clamp_clutch_up(target: (f64, f64), speed: Speed) -> (f64, f64) {
+pub fn clamp_clutch_up(target: (f64, f64), old: (f64, f64), speed: Speed) -> (f64, f64) {
     let (x_min, x_max) = match speed {
-        Speed::Neutral => (-1.0, 1.0),
+        Speed::Neutral => {
+            if target.1 > -0.5 && target.1 < 0.5 {
+                (-1.0, 1.0)
+            } else if old.0 <= -0.925 {
+                (-1.0, -0.925)
+            } else if old.0 >= -0.25 && old.0 <= 0.25 {
+                (-0.24, 0.24)
+            } else if old.0 >= 0.925 {
+                (0.925, 1.0)
+            } else {
+                (-1.0, 1.0)
+            }
+        }
         Speed::First | Speed::Second => (-1.0, -0.925),
         Speed::Third | Speed::Fourth => (-0.24, 0.24),
         Speed::Fifth | Speed::Rocket => (0.925, 1.0),
@@ -104,14 +116,14 @@ pub fn clamp_clutch_down(target: (f64, f64), old: (f64, f64)) -> (f64, f64) {
         return target;
     }
 
-    let target_x = if old.0 < -0.5 {
+    let target_x = if old.0 <= -0.5 {
         -0.51
-    } else if old.0 > 0.5 {
+    } else if old.0 >= 0.5 {
         0.51
-    } else if target.0 > 0.5 {
-        0.5
-    } else if target.0 < -0.5 {
-        -0.5
+    } else if target.0 >= 0.5 {
+        0.49
+    } else if target.0 <= -0.5 {
+        -0.49
     } else {
         return target;
     };
