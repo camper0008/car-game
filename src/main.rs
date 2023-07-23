@@ -352,7 +352,6 @@ fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
     let sdl_context = sdl2::init()?;
-    sdl_context.mouse().show_cursor(false);
     let controller_system = sdl_context.game_controller()?;
     let window = prepare_window(&sdl_context, !cli.windowed)?;
     let (width, height) = window.size();
@@ -391,6 +390,7 @@ fn main() -> Result<(), String> {
     'game_loop: loop {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
+        sdl_context.mouse().show_cursor(false);
 
         draw_tachometer(
             &mut canvas,
