@@ -24,3 +24,8 @@
 ### arch installation:
 
 `pacman -S sdl2 sdl2_gfx sdl2_image`
+
+## todo
+
+- better, centralised defined collision/blocked zones (the thing preventing you from switching directly from 1. to 3. without going through neutral first)
+- functioning rpm/speedometer
