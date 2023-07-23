@@ -10,7 +10,7 @@ mod macros;
 
 use cli::{Cli, Parser};
 use gear::{Gear, Speed};
-use hand::{clamp, Hand};
+use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
 use sdl2::controller::{Axis, GameController};
 use sdl2::event::Event;
@@ -111,20 +111,25 @@ fn draw_gear_state(
     texture: &Texture,
     position: (i16, i16),
     gear: &Gear,
+    is_clutched: bool,
 ) -> Result<(), String> {
     let state = gear.state();
 
     let initial_x = 128;
     let initial_y = 64;
 
-    let (x, y) = match state {
-        Speed::Neutral => (0, 0),
-        Speed::Rocket => (1, 0),
-        Speed::First => (0, 1),
-        Speed::Second => (1, 1),
-        Speed::Third => (0, 2),
-        Speed::Fourth => (1, 2),
-        Speed::Fifth => (0, 3),
+    let (x, y) = if is_clutched {
+        (0, 0)
+    } else {
+        match state {
+            Speed::Neutral => (0, 0),
+            Speed::Rocket => (1, 0),
+            Speed::First => (0, 1),
+            Speed::Second => (1, 1),
+            Speed::Third => (0, 2),
+            Speed::Fourth => (1, 2),
+            Speed::Fifth => (0, 3),
+        }
     };
 
     canvas.copy(
@@ -132,6 +137,20 @@ fn draw_gear_state(
         rect!(initial_x + x * 32, initial_y + y * 16, 32, 16),
         rect!(position.0, position.1, 256, 128),
     )?;
+
+    if is_clutched {
+        canvas.copy(
+            texture,
+            rect!(224, 32, 32, 32),
+            rect!(position.0, position.1 + 128, 256, 256),
+        )?;
+    } else {
+        canvas.copy(
+            texture,
+            rect!(192, 32, 32, 32),
+            rect!(position.0, position.1 + 128, 256, 256),
+        )?;
+    }
 
     Ok(())
 }
@@ -412,8 +431,9 @@ fn main() -> Result<(), String> {
         draw_gear_state(
             &mut canvas,
             &texture,
-            (center(width, 256), padded_end(height, 128)),
+            (center(width, 256), padded_end(height, 256)),
             &gear,
+            input.action_active(&Action::Clutch),
         )?;
 
         canvas.present();
@@ -431,7 +451,11 @@ fn main() -> Result<(), String> {
         };
 
         if gear.held {
-            let target = clamp(hand.target, hand.offset);
+            let target = if input.action_active(&Action::Clutch) {
+                clamp_clutch_down(hand.target, hand.offset)
+            } else {
+                clamp_clutch_up(hand.target, gear.state())
+            };
             hand.target = target;
             gear.target = target;
         } else {

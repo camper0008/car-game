@@ -10,11 +10,11 @@ pub struct Gear {
 impl Gear {
     pub fn resting_target(&self) -> (f64, f64) {
         let (x, y) = self.offset;
-        let x = if y < 0.5 && y > -0.5 {
+        let x = if y <= 0.5 && y >= -0.5 {
             0.0
-        } else if x > 0.9 {
+        } else if x >= 0.9 {
             1.0
-        } else if x < -0.9 {
+        } else if x <= -0.9 {
             -1.0
         } else if !(-0.25..=0.25).contains(&x) {
             x
@@ -22,13 +22,13 @@ impl Gear {
             0.0
         };
 
-        let y = if y > 0.9 {
+        let y = if y >= 0.9 {
             1.0
-        } else if y < -0.9 {
+        } else if y <= -0.9 {
             -1.0
-        } else if y > 0.5 {
+        } else if y >= 0.5 {
             0.75
-        } else if y < -0.5 {
+        } else if y <= -0.5 {
             -0.75
         } else {
             0.0
