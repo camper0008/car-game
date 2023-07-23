@@ -1,12 +1,14 @@
 #![warn(clippy::unwrap_used)]
 #![allow(clippy::cast_possible_truncation)]
 
+mod cli;
 mod gear;
 mod hand;
 mod input;
 mod lerp;
 mod macros;
 
+use cli::{Cli, Parser};
 use gear::{Gear, Speed};
 use hand::{clamp, Hand};
 use input::{Action, ActionState, Input};
@@ -23,7 +25,7 @@ use sdl2::{GameControllerSubsystem, Sdl};
 use std::path::Path;
 use std::time::Duration;
 
-fn prepare_window(sdl_context: &Sdl) -> Result<Window, String> {
+fn prepare_window(sdl_context: &Sdl, fullscreen: bool) -> Result<Window, String> {
     let video_subsystem = sdl_context.video()?;
     let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG)?;
     let mut window = video_subsystem
@@ -31,7 +33,9 @@ fn prepare_window(sdl_context: &Sdl) -> Result<Window, String> {
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
-    window.set_fullscreen(sdl2::video::FullscreenType::Off)?;
+    if fullscreen {
+        window.set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
+    }
     Ok(window)
 }
 
@@ -331,9 +335,11 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
 }
 
 fn main() -> Result<(), String> {
+    let cli = Cli::parse();
+
     let sdl_context = sdl2::init()?;
     let controller_system = sdl_context.game_controller()?;
-    let window = prepare_window(&sdl_context)?;
+    let window = prepare_window(&sdl_context, !cli.windowed)?;
     let (width, height) = window.size();
     let (width, height) = (
         i16::try_from(width).expect("invalid width"),
