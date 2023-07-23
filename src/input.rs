@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::utils::clamp_f64;
+
 #[derive(Debug)]
 pub enum ActionState {
     Inactive,
@@ -10,10 +12,6 @@ pub enum ActionState {
 
 #[derive(Hash, Eq, PartialEq)]
 pub enum Action {
-    Up,
-    Down,
-    Left,
-    Right,
     Grab,
     Accelerate,
     Clutch,
@@ -25,13 +23,9 @@ impl TryFrom<sdl2::keyboard::Keycode> for Action {
 
     fn try_from(value: sdl2::keyboard::Keycode) -> Result<Self, Self::Error> {
         match value {
-            sdl2::keyboard::Keycode::W | sdl2::keyboard::Keycode::Up => Ok(Action::Up),
-            sdl2::keyboard::Keycode::A | sdl2::keyboard::Keycode::Left => Ok(Action::Left),
-            sdl2::keyboard::Keycode::S | sdl2::keyboard::Keycode::Down => Ok(Action::Down),
-            sdl2::keyboard::Keycode::D | sdl2::keyboard::Keycode::Right => Ok(Action::Right),
+            sdl2::keyboard::Keycode::W | sdl2::keyboard::Keycode::Up => Ok(Action::Accelerate),
             sdl2::keyboard::Keycode::Space => Ok(Action::Grab),
             sdl2::keyboard::Keycode::LShift => Ok(Action::Clutch),
-            sdl2::keyboard::Keycode::Return => Ok(Action::Accelerate),
             key => Err(format!("unrecognized keycode: {key:#?}")),
         }
     }
@@ -49,34 +43,40 @@ impl TryFrom<sdl2::controller::Button> for Action {
     }
 }
 
+impl TryFrom<sdl2::mouse::MouseButton> for Action {
+    type Error = String;
+
+    fn try_from(value: sdl2::mouse::MouseButton) -> Result<Self, Self::Error> {
+        match value {
+            sdl2::mouse::MouseButton::Left => Ok(Action::Grab),
+            key => Err(format!("unrecognized keycode: {key:#?}")),
+        }
+    }
+}
+
 pub struct Input {
     action_map: HashMap<Action, ActionState>,
-    pub right_joystick: (f64, f64),
+    pub hand: (f64, f64),
 }
 
 impl Input {
     pub fn new() -> Self {
         Self {
             action_map: HashMap::new(),
-            right_joystick: (0.0, 0.0),
+            hand: (0.0, 0.0),
         }
     }
 
-    pub fn update_right_joystick_from_raw_x(&mut self, value: i16) {
-        let value = (f64::from(value) / f64::from(i16::MAX)) * 1.5;
+    pub fn update_hand_relatively(&mut self, x: i32, y: i32) {
+        let reduced_x = self.hand.0 + (x as f64) / 256.0;
+        let reduced_x = clamp_f64(reduced_x, -1.0, 1.0);
+        let reduced_y = self.hand.1 + (y as f64) / 256.0;
+        let reduced_y = clamp_f64(reduced_y, -1.0, 1.0);
 
-        let value = if value > 1.0 {
-            1.0
-        } else if value < -1.0 {
-            -1.0
-        } else {
-            value
-        };
-
-        self.right_joystick.0 = value;
+        self.hand = (reduced_x, reduced_y);
     }
 
-    pub fn update_right_joystick_from_raw_y(&mut self, value: i16) {
+    pub fn update_hand_from_raw_x(&mut self, value: i16) {
         let value = (f64::from(value) / f64::from(i16::MAX)) * 1.5;
 
         let value = if value > 1.0 {
@@ -87,7 +87,21 @@ impl Input {
             value
         };
 
-        self.right_joystick.1 = value;
+        self.hand.0 = value;
+    }
+
+    pub fn update_hand_from_raw_y(&mut self, value: i16) {
+        let value = (f64::from(value) / f64::from(i16::MAX)) * 1.5;
+
+        let value = if value > 1.0 {
+            1.0
+        } else if value < -1.0 {
+            -1.0
+        } else {
+            value
+        };
+
+        self.hand.1 = value;
     }
 
     pub fn get(&self, action: &Action) -> Option<&ActionState> {

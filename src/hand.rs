@@ -1,6 +1,7 @@
 use crate::{
     gear::Speed,
     input::{Action, Input},
+    utils::clamp_f64,
 };
 
 pub struct Hand {
@@ -10,46 +11,20 @@ pub struct Hand {
 }
 
 impl Hand {
-    pub fn gamepad_target(input: &Input) -> (f64, f64) {
-        input.right_joystick
-    }
-    pub fn keyboard_target(input: &Input) -> (f64, f64) {
-        let a = input.action_active(&Action::Left);
-        let d = input.action_active(&Action::Right);
-        let target_x = match (a, d) {
-            (true, true) | (false, false) => 0.0,
-            (true, false) => -1.0,
-            (false, true) => 1.0,
-        };
-        let w = input.action_active(&Action::Up);
-        let s = input.action_active(&Action::Down);
-        let target_y = match (w, s) {
-            (true, true) | (false, false) => 0.0,
-            (true, false) => -1.0,
-            (false, true) => 1.0,
-        };
-
-        (target_x, target_y)
+    pub fn target(input: &Input) -> (f64, f64) {
+        input.hand
     }
 
     pub fn action_tick(input: &mut Input) {
-        input.action_tick(Action::Up);
-        input.action_tick(Action::Left);
-        input.action_tick(Action::Down);
-        input.action_tick(Action::Right);
         input.action_tick(Action::Grab);
         input.action_tick(Action::Clutch);
     }
 
     pub fn has_changed(input: &Input) -> bool {
-        let up = input.action_changed(&Action::Up);
-        let left = input.action_changed(&Action::Left);
-        let down = input.action_changed(&Action::Down);
-        let right = input.action_changed(&Action::Right);
         let grab = input.action_changed(&Action::Grab);
         let clutch = input.action_changed(&Action::Clutch);
 
-        up || left || down || right || grab || clutch
+        grab || clutch
     }
 
     pub fn reset(&mut self, alpha: f64, offset: (f64, f64)) {
@@ -62,16 +37,6 @@ impl Hand {
         if self.alpha > 1.0 {
             self.alpha = 1.0;
         }
-    }
-}
-
-fn clamp_f64(value: f64, min: f64, max: f64) -> f64 {
-    if value < min {
-        min
-    } else if value > max {
-        max
-    } else {
-        value
     }
 }
 

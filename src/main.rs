@@ -5,8 +5,8 @@ mod cli;
 mod gear;
 mod hand;
 mod input;
-mod lerp;
 mod macros;
+mod utils;
 
 use cli::{Cli, Parser};
 use gear::{Gear, Speed};
@@ -155,23 +155,6 @@ fn draw_gear_state(
     Ok(())
 }
 
-fn draw_keyboard_or_controller(
-    canvas: &mut WindowCanvas,
-    texture: &Texture,
-    position: (i16, i16),
-    is_keyboard: bool,
-) -> Result<(), String> {
-    let offset = i32::from(is_keyboard);
-
-    canvas.copy(
-        texture,
-        rect!(192, 16 * offset, 32, 16),
-        rect!(position.0, position.1, 256, 128),
-    )?;
-
-    Ok(())
-}
-
 fn draw_tachometer(
     canvas: &mut WindowCanvas,
     texture: &Texture,
@@ -254,6 +237,31 @@ fn check_for_controllers(system: &GameControllerSubsystem) -> Result<GameControl
     system.open(0).map_err(|e| e.to_string())
 }
 
+pub fn key_down<A: TryInto<Action> + std::fmt::Debug + Copy>(input: &mut Input, action: A) {
+    let Ok(action) = action.try_into() else {
+        println!("unrecognized action {action:#?}");
+        return;
+    };
+    let state = match input.get(&action) {
+        Some(ActionState::Inactive | ActionState::JustInactive) | None => ActionState::JustActive,
+        Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
+    };
+    input.insert(action, state);
+}
+
+pub fn key_up<A: TryInto<Action> + std::fmt::Debug + Copy>(input: &mut Input, action: A) {
+    let Ok(action) = action.try_into() else {
+        println!("unrecognized key {action:#?}");
+        return;
+    };
+    let state = match input.get(&action) {
+        Some(ActionState::Active | ActionState::JustActive) => ActionState::JustInactive,
+        Some(ActionState::Inactive | ActionState::JustInactive) => ActionState::Inactive,
+        None => unreachable!(),
+    };
+    input.insert(action, state);
+}
+
 fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
     for event in sdl_context.event_pump()?.poll_iter() {
         match event {
@@ -267,73 +275,48 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
             Event::KeyDown {
                 keycode: Some(key), ..
             } => {
-                let Ok(key) = key.try_into() else {
-                        println!("unrecognized key {key:#?}");
-                        continue;
-                    };
-                let state = match input.get(&key) {
-                    Some(ActionState::Inactive | ActionState::JustInactive) | None => {
-                        ActionState::JustActive
-                    }
-                    Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
-                };
-                input.insert(key, state);
+                key_down(input, key);
             }
             Event::ControllerButtonDown {
                 timestamp: _,
                 which: _,
                 button,
             } => {
-                let Ok(key) = button.try_into() else {
-                        println!("unrecognized key {button:#?}");
-                        continue;
-                    };
-                let state = match input.get(&key) {
-                    Some(ActionState::Inactive | ActionState::JustInactive) | None => {
-                        ActionState::JustActive
-                    }
-                    Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
-                };
-                input.insert(key, state);
+                key_down(input, button);
             }
-
+            Event::MouseButtonDown {
+                timestamp: _,
+                window_id: _,
+                which: _,
+                mouse_btn,
+                clicks: _,
+                x: _,
+                y: _,
+            } => {
+                key_down(input, mouse_btn);
+            }
             Event::KeyUp {
                 keycode: Some(key), ..
             } => {
-                let Ok(key) = key.try_into() else {
-                        println!("unrecognized key {key:#?}");
-                        continue;
-                    };
-                let state = match input.get(&key) {
-                    Some(ActionState::Active | ActionState::JustActive) => {
-                        ActionState::JustInactive
-                    }
-                    Some(ActionState::Inactive | ActionState::JustInactive) => {
-                        ActionState::Inactive
-                    }
-                    None => unreachable!(),
-                };
-                input.insert(key, state);
+                key_up(input, key);
             }
             Event::ControllerButtonUp {
                 timestamp: _,
                 which: _,
                 button,
             } => {
-                let Ok(key) = button.try_into() else {
-                        println!("unrecognized key {button:#?}");
-                        continue;
-                    };
-                let state = match input.get(&key) {
-                    Some(ActionState::Active | ActionState::JustActive) => {
-                        ActionState::JustInactive
-                    }
-                    Some(ActionState::Inactive | ActionState::JustInactive) => {
-                        ActionState::Inactive
-                    }
-                    None => unreachable!(),
-                };
-                input.insert(key, state);
+                key_up(input, button);
+            }
+            Event::MouseButtonUp {
+                timestamp: _,
+                window_id: _,
+                which: _,
+                mouse_btn,
+                clicks: _,
+                x: _,
+                y: _,
+            } => {
+                key_up(input, mouse_btn);
             }
 
             Event::ControllerAxisMotion {
@@ -342,10 +325,22 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                 axis,
                 value,
             } => match axis {
-                Axis::RightX => input.update_right_joystick_from_raw_x(value),
-                Axis::RightY => input.update_right_joystick_from_raw_y(value),
+                Axis::RightX => input.update_hand_from_raw_x(value),
+                Axis::RightY => input.update_hand_from_raw_y(value),
                 _ => {}
             },
+            Event::MouseMotion {
+                timestamp: _,
+                window_id: _,
+                which: _,
+                mousestate: _,
+                x: _,
+                y: _,
+                xrel,
+                yrel,
+            } => {
+                input.update_hand_relatively(xrel, yrel);
+            }
             _ => (),
         }
     }
@@ -357,6 +352,7 @@ fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
     let sdl_context = sdl2::init()?;
+    sdl_context.mouse().show_cursor(false);
     let controller_system = sdl_context.game_controller()?;
     let window = prepare_window(&sdl_context, !cli.windowed)?;
     let (width, height) = window.size();
@@ -386,12 +382,8 @@ fn main() -> Result<(), String> {
 
     let mut input = Input::new();
 
-    let controller = match check_for_controllers(&controller_system) {
-        Ok(controller) => Some(controller),
-        Err(err) => {
-            println!("error connecting controller: {err}");
-            None
-        }
+    if let Err(err) = check_for_controllers(&controller_system) {
+        println!("error connecting controller: {err}");
     };
 
     let gearstick_position = (width - 128 * 4, padded_end(height, 160));
@@ -400,8 +392,6 @@ fn main() -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
 
-        draw_keyboard_or_controller(&mut canvas, &texture, (0, 0), controller.is_none())?;
-
         draw_tachometer(
             &mut canvas,
             &texture,
@@ -409,7 +399,7 @@ fn main() -> Result<(), String> {
             tachometer_angle.to_radians(),
         )?;
 
-        let smoothed_gear_offset = lerp::two_dimensional(gear.alpha, gear.offset, gear.target);
+        let smoothed_gear_offset = utils::lerp_2d(gear.alpha, gear.offset, gear.target);
 
         draw_gearstick(
             &mut canvas,
@@ -418,7 +408,7 @@ fn main() -> Result<(), String> {
             smoothed_gear_offset,
         )?;
 
-        let smoothed_hand_offset = lerp::two_dimensional(hand.alpha, hand.offset, hand.target);
+        let smoothed_hand_offset = utils::lerp_2d(hand.alpha, hand.offset, hand.target);
 
         draw_hand(
             &mut canvas,
@@ -444,11 +434,7 @@ fn main() -> Result<(), String> {
             break 'game_loop Ok(());
         }
 
-        hand.target = if controller.is_some() {
-            Hand::gamepad_target(&input)
-        } else {
-            Hand::keyboard_target(&input)
-        };
+        hand.target = Hand::target(&input);
 
         if gear.held {
             let target = if input.action_active(&Action::Clutch) {
@@ -468,7 +454,7 @@ fn main() -> Result<(), String> {
         if Hand::has_changed(&input) {
             hand.reset(0.0, smoothed_hand_offset);
             gear.reset(0.0, smoothed_gear_offset);
-        } else if controller.is_some() {
+        } else {
             hand.reset(0.25, smoothed_hand_offset);
             gear.reset(0.25, smoothed_gear_offset);
         }

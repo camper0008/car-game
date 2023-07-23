@@ -1,4 +1,4 @@
-use crate::lerp;
+use crate::utils;
 
 pub struct Gear {
     pub alpha: f64,
@@ -38,7 +38,7 @@ impl Gear {
     }
 
     pub fn state(&self) -> Speed {
-        let (x, y) = lerp::two_dimensional(self.alpha, self.offset, self.target);
+        let (x, y) = utils::lerp_2d(self.alpha, self.offset, self.target);
 
         if (-0.9..=0.9).contains(&y) {
             return Speed::Neutral;
