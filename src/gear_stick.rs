@@ -49,38 +49,38 @@ impl GearStick {
         (x, y)
     }
 
-    pub fn speed(&self, is_clutched: bool) -> Speed {
+    pub fn gear(&self, is_clutched: bool) -> Gear {
         let (x, y) = utils::lerp_2d(self.smooth_factor, self.offset, self.target);
 
         if is_clutched {
-            return Speed::Neutral;
+            return Gear::Neutral;
         }
         if (-0.9..=0.9).contains(&y) {
-            return Speed::Neutral;
+            return Gear::Neutral;
         }
         if (0.25..=0.9).contains(&x) {
-            return Speed::Neutral;
+            return Gear::Neutral;
         }
         if (-0.9..=-0.25).contains(&x) {
-            return Speed::Neutral;
+            return Gear::Neutral;
         }
 
         if x < -0.9 {
             if y <= -0.9 {
-                Speed::First
+                Gear::First
             } else {
-                Speed::Second
+                Gear::Second
             }
         } else if x < 0.25 {
             if y <= -0.9 {
-                Speed::Third
+                Gear::Third
             } else {
-                Speed::Fourth
+                Gear::Fourth
             }
         } else if y <= -0.9 {
-            Speed::Fifth
+            Gear::Fifth
         } else {
-            Speed::Rocket
+            Gear::Rocket
         }
     }
 
@@ -90,7 +90,7 @@ impl GearStick {
 }
 
 #[derive(PartialEq)]
-pub enum Speed {
+pub enum Gear {
     Neutral,
     First,
     Second,
@@ -100,15 +100,15 @@ pub enum Speed {
     Rocket,
 }
 
-impl Speed {
+impl Gear {
     pub fn gear_ratio(&self) -> f64 {
         match self {
-            Speed::First | Speed::Neutral => 3.55,
-            Speed::Second => 1.92,
-            Speed::Third => 1.32,
-            Speed::Fourth => 1.0,
-            Speed::Fifth => 0.82,
-            Speed::Rocket => 3.58,
+            Gear::First | Gear::Neutral => 3.55,
+            Gear::Second => 1.92,
+            Gear::Third => 1.32,
+            Gear::Fourth => 1.0,
+            Gear::Fifth => 0.82,
+            Gear::Rocket => 3.58,
         }
     }
 }

@@ -3,7 +3,7 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Texture, WindowCanvas};
 
-use crate::gear_stick::Speed;
+use crate::gear_stick::Gear;
 
 macro_rules! rect(
     ($x:expr, $y:expr, $w:expr, $h:expr) => (
@@ -119,22 +119,19 @@ fn gear_state(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    speed: &Speed,
-    is_clutched: bool,
+    gear: &Gear,
 ) -> Result<(), String> {
-    let speed = if is_clutched { &Speed::Neutral } else { speed };
-
     let initial_x = 128;
     let initial_y = 64;
 
-    let y = match speed {
-        Speed::Neutral => 0,
-        Speed::Rocket => 1,
-        Speed::First => 2,
-        Speed::Second => 3,
-        Speed::Third => 4,
-        Speed::Fourth => 5,
-        Speed::Fifth => 6,
+    let y = match gear {
+        Gear::Neutral => 0,
+        Gear::Rocket => 1,
+        Gear::First => 2,
+        Gear::Second => 3,
+        Gear::Third => 4,
+        Gear::Fourth => 5,
+        Gear::Fifth => 6,
     };
 
     canvas.copy(
@@ -348,14 +345,14 @@ pub struct Hand {
 pub struct Peripherals<'a> {
     pub rpm: f64,
     pub kmh: f64,
-    pub speed: &'a Speed,
+    pub gear: &'a Gear,
 }
 
 pub fn all(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     window_size: (i16, i16),
-    Peripherals { rpm, kmh, speed }: &Peripherals,
+    Peripherals { rpm, kmh, gear }: &Peripherals,
     gear_offset: (f64, f64),
     hand_state: &Hand,
     pedal_state: &Pedals,
@@ -386,8 +383,7 @@ pub fn all(
         canvas,
         texture,
         (center(width, 192), padded_end(height, 128) - 64),
-        speed,
-        pedal_state.clutch_down,
+        gear,
     )?;
 
     speedometer(

@@ -10,7 +10,7 @@ mod input;
 mod utils;
 
 use cli::{Cli, Parser};
-use gear_stick::{expected_kmh, expected_rpm, GearStick, Speed};
+use gear_stick::{expected_kmh, expected_rpm, Gear, GearStick};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
 use sdl2::controller::Axis;
@@ -244,7 +244,7 @@ fn main() -> Result<(), String> {
 
     let mut rpm: f64 = 0.0;
     let mut kmh: f64 = 5.0;
-    let mut previous_speed = Speed::Neutral;
+    let mut previous_gear = Gear::Neutral;
     let mut clutch_cooldown = ClutchCooldown {
         start_rpm: 0.0,
         timer: 0.0,
@@ -257,7 +257,7 @@ fn main() -> Result<(), String> {
         target: (0.0, 0.0),
     };
 
-    let mut gear = GearStick {
+    let mut gear_stick = GearStick {
         smooth_factor: 0.25,
         held: false,
         offset: (0.0, 0.0),
@@ -281,10 +281,14 @@ fn main() -> Result<(), String> {
         let hand_offset = utils::lerp_2d(hand.smooth_factor, hand.offset, hand.target);
         hand.set_origin(hand_offset);
 
-        let gear_offset = utils::lerp_2d(gear.smooth_factor, gear.offset, gear.target);
-        gear.set_origin(gear_offset);
+        let gear_stick_offset = utils::lerp_2d(
+            gear_stick.smooth_factor,
+            gear_stick.offset,
+            gear_stick.target,
+        );
+        gear_stick.set_origin(gear_stick_offset);
 
-        let gear_speed = gear.speed(input.action_active(&Action::Clutch));
+        let gear = gear_stick.gear(input.action_active(&Action::Clutch));
 
         draw::all(
             &mut canvas,
@@ -293,9 +297,9 @@ fn main() -> Result<(), String> {
             &draw::Peripherals {
                 rpm,
                 kmh,
-                speed: &gear_speed,
+                gear: &gear,
             },
-            gear_offset,
+            gear_stick_offset,
             &draw::Hand {
                 offset: hand_offset,
                 grabbing: input.action_active(&Action::Grab),
@@ -315,46 +319,46 @@ fn main() -> Result<(), String> {
         }
 
         hand.target = Hand::target(&input);
-        if gear.held {
+        if gear_stick.held {
             let target = if input.action_active(&Action::Clutch) {
                 clamp_clutch_down(hand.target, hand.offset)
             } else {
-                clamp_clutch_up(hand.target, hand.offset, &gear_speed)
+                clamp_clutch_up(hand.target, hand.offset, &gear)
             };
             hand.target = target;
-            gear.target = target;
+            gear_stick.target = target;
         } else {
-            gear.target = gear.resting_target();
+            gear_stick.target = gear_stick.resting_target();
         };
 
         if input.action_active(&Action::Brake) {
             let speed_diff = (50.0 / 60.0) * input.brake_alpha;
             kmh -= speed_diff;
 
-            if !(gear_speed == Speed::Neutral) {
-                let rpm_before = expected_rpm(kmh, gear_speed.gear_ratio());
-                let rpm_after = expected_rpm(kmh - speed_diff, gear_speed.gear_ratio());
+            if !(gear == Gear::Neutral) {
+                let rpm_before = expected_rpm(kmh, gear.gear_ratio());
+                let rpm_after = expected_rpm(kmh - speed_diff, gear.gear_ratio());
                 rpm -= rpm_before - rpm_after;
             }
         }
 
-        if gear_speed == Speed::Neutral {
+        if gear == Gear::Neutral {
             clutch_cooldown.active = false;
             clutch_cooldown.timer = 0.0;
 
             let speeder_down = input.action_active(&Action::Accelerate);
-            let neutral_gear = gear_speed == Speed::Neutral;
+            let neutral_gear = gear == Gear::Neutral;
             let speeder_alpha = input.speeder_alpha;
             rpm = flywheel_rpm(rpm, &mut input, speeder_down, neutral_gear, speeder_alpha);
             kmh -= 1.0 / 60.0;
-            if kmh < expected_kmh(700.0, Speed::Neutral.gear_ratio()) {
-                kmh = expected_kmh(700.0, Speed::Neutral.gear_ratio());
+            if kmh < expected_kmh(700.0, Gear::Neutral.gear_ratio()) {
+                kmh = expected_kmh(700.0, Gear::Neutral.gear_ratio());
             }
-        } else if previous_speed == Speed::Neutral && !clutch_cooldown.active {
+        } else if previous_gear == Gear::Neutral && !clutch_cooldown.active {
             clutch_cooldown.active = true;
             clutch_cooldown.start_rpm = rpm;
         } else if clutch_cooldown.timer < 1.0 && clutch_cooldown.active {
-            let target = expected_rpm(kmh, gear_speed.gear_ratio());
+            let target = expected_rpm(kmh, gear.gear_ratio());
             rpm = lerp_1d(clutch_cooldown.timer, clutch_cooldown.start_rpm, target);
             clutch_cooldown.timer += 4.0 / 60.0;
 
@@ -366,24 +370,24 @@ fn main() -> Result<(), String> {
             clutch_cooldown.timer = 0.0;
         } else {
             let speeder_down = input.action_active(&Action::Accelerate);
-            let neutral_gear = gear_speed == Speed::Neutral;
+            let neutral_gear = gear == Gear::Neutral;
             let speeder_alpha = input.speeder_alpha;
             rpm = flywheel_rpm(rpm, &mut input, speeder_down, neutral_gear, speeder_alpha);
-            kmh = expected_kmh(rpm, gear_speed.gear_ratio());
+            kmh = expected_kmh(rpm, gear.gear_ratio());
         }
 
         if input.action_changed(&Action::Grab) {
-            let x_square = (hand_offset.0 - gear_offset.0).powi(2);
-            let y_square = (hand_offset.1 - gear_offset.1).powi(2);
+            let x_square = (hand_offset.0 - gear_stick_offset.0).powi(2);
+            let y_square = (hand_offset.1 - gear_stick_offset.1).powi(2);
             let distance = (x_square + y_square).sqrt();
 
-            gear.held = input.action_active(&Action::Grab) && distance < 0.5;
+            gear_stick.held = input.action_active(&Action::Grab) && distance < 0.5;
         }
 
         input.action_tick(Action::Grab);
         input.action_tick(Action::Clutch);
 
-        previous_speed = gear_speed;
+        previous_gear = gear;
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

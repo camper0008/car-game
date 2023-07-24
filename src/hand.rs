@@ -1,4 +1,4 @@
-use crate::{gear_stick::Speed, input::Input, utils::clamp_f64};
+use crate::{gear_stick::Gear, input::Input, utils::clamp_f64};
 
 pub struct Hand {
     pub smooth_factor: f64,
@@ -16,9 +16,9 @@ impl Hand {
     }
 }
 
-pub fn clamp_clutch_up(target: (f64, f64), old: (f64, f64), speed: &Speed) -> (f64, f64) {
-    let (x_min, x_max) = match speed {
-        Speed::Neutral => {
+pub fn clamp_clutch_up(target: (f64, f64), old: (f64, f64), gear: &Gear) -> (f64, f64) {
+    let (x_min, x_max) = match gear {
+        Gear::Neutral => {
             if target.1 > -0.5 && target.1 < 0.5 {
                 (-1.0, 1.0)
             } else if old.0 <= -0.925 {
@@ -31,15 +31,15 @@ pub fn clamp_clutch_up(target: (f64, f64), old: (f64, f64), speed: &Speed) -> (f
                 (-1.0, 1.0)
             }
         }
-        Speed::First | Speed::Second => (-1.0, -0.925),
-        Speed::Third | Speed::Fourth => (-0.24, 0.24),
-        Speed::Fifth | Speed::Rocket => (0.925, 1.0),
+        Gear::First | Gear::Second => (-1.0, -0.925),
+        Gear::Third | Gear::Fourth => (-0.24, 0.24),
+        Gear::Fifth | Gear::Rocket => (0.925, 1.0),
     };
 
-    let (y_min, y_max) = match speed {
-        Speed::Neutral => (-0.7, 0.7),
-        Speed::First | Speed::Third | Speed::Fifth => (-1.0, -0.95),
-        Speed::Second | Speed::Fourth | Speed::Rocket => (0.95, 1.0),
+    let (y_min, y_max) = match gear {
+        Gear::Neutral => (-0.7, 0.7),
+        Gear::First | Gear::Third | Gear::Fifth => (-1.0, -0.95),
+        Gear::Second | Gear::Fourth | Gear::Rocket => (0.95, 1.0),
     };
 
     let x = clamp_f64(target.0, x_min, x_max);
