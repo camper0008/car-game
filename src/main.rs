@@ -1,6 +1,5 @@
 #![warn(clippy::unwrap_used)]
 #![allow(clippy::cast_possible_truncation)]
-#![allow(clippy::too_many_lines)]
 
 mod cli;
 mod draw;
@@ -227,12 +226,12 @@ pub struct KmhRpmPair {
 fn brake(kmh: f64, rpm: f64, gear: &Gear, brake_alpha: f64) -> KmhRpmPair {
     let kmh_diff = (50.0 / 60.0) * brake_alpha;
 
-    let rpm_diff = if !(gear == &Gear::Neutral) {
+    let rpm_diff = if gear == &Gear::Neutral {
+        0.0
+    } else {
         let rpm_before = expected_rpm(kmh, gear.gear_ratio());
         let rpm_after = expected_rpm(kmh - kmh_diff, gear.gear_ratio());
         rpm_before - rpm_after
-    } else {
-        0.0
     };
 
     KmhRpmPair {
@@ -266,6 +265,7 @@ fn update_rpm_in_neutral(kmh: f64, rpm: f64, input: &mut Input) -> KmhRpmPair {
     KmhRpmPair { kmh, rpm }
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() -> Result<(), String> {
     let cli = Cli::parse();
     simple_logger::SimpleLogger::new()
