@@ -3,10 +3,10 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Texture, WindowCanvas};
 
-use crate::gear::{Gear, Speed};
+use crate::gear::Speed;
 use crate::rect;
 
-pub fn gearstick(
+fn gearstick(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
@@ -42,7 +42,7 @@ pub fn gearstick(
     Ok(())
 }
 
-pub fn hand(
+fn hand(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
@@ -71,7 +71,7 @@ pub struct PedalState {
     pub brake_down: bool,
 }
 
-pub fn pedals(
+fn pedals(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
@@ -79,11 +79,11 @@ pub fn pedals(
         clutch_down,
         speeder_down,
         brake_down,
-    }: PedalState,
+    }: &PedalState,
 ) -> Result<(), String> {
     let size = 160;
 
-    let texture_x = if clutch_down { 224 } else { 192 };
+    let texture_x = if *clutch_down { 224 } else { 192 };
 
     canvas.copy(
         texture,
@@ -91,7 +91,7 @@ pub fn pedals(
         rect!(position.0 - size, position.1, size, size),
     )?;
 
-    let texture_x = if brake_down { 224 } else { 192 };
+    let texture_x = if *brake_down { 224 } else { 192 };
 
     canvas.copy(
         texture,
@@ -99,7 +99,7 @@ pub fn pedals(
         rect!(position.0, position.1, size, size),
     )?;
 
-    let texture_x = if speeder_down { 224 } else { 192 };
+    let texture_x = if *speeder_down { 224 } else { 192 };
 
     canvas.copy(
         texture,
@@ -110,23 +110,19 @@ pub fn pedals(
     Ok(())
 }
 
-pub fn gear_state(
+fn gear_state(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    gear: &Gear,
+    speed: Speed,
     is_clutched: bool,
 ) -> Result<(), String> {
-    let state = if is_clutched {
-        Speed::Neutral
-    } else {
-        gear.speed()
-    };
+    let speed = if is_clutched { Speed::Neutral } else { speed };
 
     let initial_x = 128;
     let initial_y = 64;
 
-    let y = match state {
+    let y = match speed {
         Speed::Neutral => 0,
         Speed::Rocket => 1,
         Speed::First => 2,
@@ -236,7 +232,7 @@ fn draw_digit(
     Ok(())
 }
 
-pub fn kmh(
+fn speedometer(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
@@ -280,7 +276,7 @@ pub fn kmh(
     Ok(())
 }
 
-pub fn tachometer(
+fn tachometer(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
@@ -326,6 +322,70 @@ pub fn tachometer(
         target.1,
         4,
         Color::RGB(178, 16, 48),
+    )?;
+
+    Ok(())
+}
+
+fn padded_end(max: i16, length: i16) -> i16 {
+    max - 256 - length / 2
+}
+
+fn center(max: i16, length: i16) -> i16 {
+    (max / 2) - length / 2
+}
+
+pub struct HandState {
+    pub offset: (f64, f64),
+    pub grabbing: bool,
+}
+
+pub fn all(
+    canvas: &mut WindowCanvas,
+    texture: &Texture,
+    window_size: (i16, i16),
+    rpm: f64,
+    kmh: f64,
+    gear_offset: (f64, f64),
+    hand_state: HandState,
+    pedal_state: PedalState,
+    speed: Speed,
+) -> Result<(), String> {
+    let (width, height) = window_size;
+    let gearstick_position = (width - 128 * 4, padded_end(height, 160));
+
+    tachometer(canvas, &texture, (128, padded_end(height, 256)), rpm)?;
+
+    gearstick(canvas, &texture, gearstick_position, gear_offset)?;
+
+    hand(
+        canvas,
+        &texture,
+        gearstick_position,
+        hand_state.offset,
+        hand_state.grabbing,
+    )?;
+
+    pedals(
+        canvas,
+        &texture,
+        (center(width, 160), padded_end(height, 160) + 96),
+        &pedal_state,
+    )?;
+
+    gear_state(
+        canvas,
+        &texture,
+        (center(width, 192), padded_end(height, 128) - 64),
+        speed,
+        pedal_state.clutch_down,
+    )?;
+
+    speedometer(
+        canvas,
+        &texture,
+        (center(width, 160 + 96), padded_end(height, 128) - 128),
+        kmh,
     )?;
 
     Ok(())

@@ -81,14 +81,6 @@ fn update_flywheel_rpm(
     }
 }
 
-fn padded_end(max: i16, length: i16) -> i16 {
-    max - 256 - length / 2
-}
-
-fn center(max: i16, length: i16) -> i16 {
-    (max / 2) - length / 2
-}
-
 fn check_for_controllers(
     input: &mut Input,
     system: &GameControllerSubsystem,
@@ -242,7 +234,7 @@ fn main() -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
     let texture = texture_creator.load_texture(Path::new("assets/tile.png"))?;
 
-    let mut flywheel_rpm: f64 = 0.0;
+    let mut rpm: f64 = 0.0;
     let mut kmh: f64 = 5.0;
     let mut previous_speed = Speed::Neutral;
     let mut clutching_in_start_rpm = 0.0;
@@ -271,64 +263,32 @@ fn main() -> Result<(), String> {
         }
     };
 
-    let gearstick_position = (width - 128 * 4, padded_end(height, 160));
-
     'game_loop: loop {
         canvas.set_draw_color(Color::RGB(1, 25, 54));
         canvas.clear();
         sdl_context.mouse().set_relative_mouse_mode(true);
 
-        draw::tachometer(
-            &mut canvas,
-            &texture,
-            (128, padded_end(height, 256)),
-            flywheel_rpm,
-        )?;
-
+        let smoothed_hand_offset = utils::lerp_2d(hand.alpha, hand.offset, hand.target);
         let smoothed_gear_offset = utils::lerp_2d(gear.alpha, gear.offset, gear.target);
 
-        draw::gearstick(
+        draw::all(
             &mut canvas,
             &texture,
-            gearstick_position,
+            (width, height),
+            rpm,
+            kmh,
             smoothed_gear_offset,
-        )?;
-
-        let smoothed_hand_offset = utils::lerp_2d(hand.alpha, hand.offset, hand.target);
-
-        draw::hand(
-            &mut canvas,
-            &texture,
-            gearstick_position,
-            smoothed_hand_offset,
-            input.action_active(&Action::Grab),
-        )?;
-
-        draw::pedals(
-            &mut canvas,
-            &texture,
-            (center(width, 160), padded_end(height, 160) + 96),
+            draw::HandState {
+                offset: smoothed_hand_offset,
+                grabbing: input.action_active(&Action::Grab),
+            },
             PedalState {
                 speeder_down: input.action_active(&Action::Accelerate),
                 clutch_down: input.action_active(&Action::Clutch),
                 brake_down: input.action_active(&Action::Brake),
             },
+            gear.speed(),
         )?;
-
-        draw::gear_state(
-            &mut canvas,
-            &texture,
-            (center(width, 192), padded_end(height, 128) - 64),
-            &gear,
-            input.action_active(&Action::Clutch),
-        )?;
-        draw::kmh(
-            &mut canvas,
-            &texture,
-            (center(width, 160 + 96), padded_end(height, 128) - 128),
-            kmh,
-        )?;
-
         canvas.present();
 
         poll_events(&sdl_context, &mut input, &controller_system)?;
@@ -369,7 +329,7 @@ fn main() -> Result<(), String> {
             if !(input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral) {
                 let rpm_before = expected_rpm(kmh, gear.speed().gear_ratio());
                 let rpm_after = expected_rpm(kmh - speed_diff, gear.speed().gear_ratio());
-                flywheel_rpm -= rpm_before - rpm_after;
+                rpm -= rpm_before - rpm_after;
             }
         }
 
@@ -381,7 +341,7 @@ fn main() -> Result<(), String> {
                 input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
             let speeder_alpha = input.speeder_alpha;
             update_flywheel_rpm(
-                &mut flywheel_rpm,
+                &mut rpm,
                 &mut input,
                 speeder_down,
                 clutch_down,
@@ -393,13 +353,13 @@ fn main() -> Result<(), String> {
             }
         } else if previous_speed == Speed::Neutral && !clutching_in {
             clutching_in = true;
-            clutching_in_start_rpm = flywheel_rpm;
+            clutching_in_start_rpm = rpm;
         } else if clutching_in_timer < 1.0 && clutching_in {
             let target = expected_rpm(kmh, gear.speed().gear_ratio());
-            flywheel_rpm = lerp_1d(clutching_in_timer, clutching_in_start_rpm, target);
+            rpm = lerp_1d(clutching_in_timer, clutching_in_start_rpm, target);
             clutching_in_timer += 4.0 / 60.0;
 
-            if (flywheel_rpm - target).abs() > 500.0 {
+            if (rpm - target).abs() > 500.0 {
                 input.shake_controller();
             }
         } else if clutching_in && clutching_in_timer >= 1.0 {
@@ -411,13 +371,13 @@ fn main() -> Result<(), String> {
                 input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
             let speeder_alpha = input.speeder_alpha;
             update_flywheel_rpm(
-                &mut flywheel_rpm,
+                &mut rpm,
                 &mut input,
                 speeder_down,
                 clutch_down,
                 speeder_alpha,
             );
-            kmh = expected_kmh(flywheel_rpm, gear.speed().gear_ratio());
+            kmh = expected_kmh(rpm, gear.speed().gear_ratio());
         }
 
         if input.action_changed(&Action::Grab) {
