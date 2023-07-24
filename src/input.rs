@@ -132,4 +132,31 @@ impl Input {
         };
         self.insert(action, state);
     }
+
+    pub fn key_down<A: TryInto<Action> + std::fmt::Debug + Copy>(&mut self, action: A) {
+        let Ok(action) = action.try_into() else {
+        println!("unrecognized action {action:#?}");
+        return;
+    };
+        let state = match self.get(&action) {
+            Some(ActionState::Inactive | ActionState::JustInactive) | None => {
+                ActionState::JustActive
+            }
+            Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
+        };
+        self.insert(action, state);
+    }
+
+    pub fn key_up<A: TryInto<Action> + std::fmt::Debug + Copy>(&mut self, action: A) {
+        let Ok(action) = action.try_into() else {
+        println!("unrecognized key {action:#?}");
+        return;
+    };
+        let state = match self.get(&action) {
+            Some(ActionState::Active | ActionState::JustActive) => ActionState::JustInactive,
+            Some(ActionState::Inactive | ActionState::JustInactive) => ActionState::Inactive,
+            None => unreachable!(),
+        };
+        self.insert(action, state);
+    }
 }

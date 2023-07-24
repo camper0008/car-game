@@ -159,8 +159,18 @@ fn draw_tachometer(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    angle: f64,
+    rpm: f64,
 ) -> Result<(), String> {
+    let min_rpm = 0.0;
+    let max_rpm = 8000.0;
+    let min_angle = -12.5;
+    let max_angle = -347.5;
+
+    let percentage = (rpm - min_rpm) / (max_rpm - min_rpm);
+
+    let angle = (percentage * (max_angle - min_angle)) + min_angle;
+    let angle = angle.to_radians();
+
     canvas.copy(
         texture,
         rect!(0, 0, 64, 64),
@@ -196,28 +206,23 @@ fn draw_tachometer(
     Ok(())
 }
 
-fn update_tachometer_angle(angle: &mut f64, accelerating: bool) {
-    let min_angle = 307.0;
-    let max_angle = 15.0;
+fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool) {
+    let min_rpm = 0.0;
+    let max_rpm = 8000.0;
 
-    let acceleration_rate = *angle - min_angle;
-    let acceleration_rate = -acceleration_rate;
-    let acceleration_rate = acceleration_rate * 0.01 + 1.0;
-    let acceleration_rate = if acceleration_rate > 5.0 {
-        2.0
-    } else {
-        acceleration_rate
-    };
+    let flywheel_rpm_function = |rpm: f64| -rpm.powf(1.3) + 1.8 * rpm + 1.0;
+
+    let acceleration_rate = flywheel_rpm_function(*rpm / 1000.0);
 
     if accelerating {
-        *angle -= 1.5 * acceleration_rate;
+        *rpm += 1000.0 / 60.0 * acceleration_rate;
     } else {
-        *angle += 0.5 * acceleration_rate;
+        *rpm -= 250.0 / 60.0 * acceleration_rate;
     }
-    if *angle > min_angle {
-        *angle = min_angle;
-    } else if *angle < max_angle {
-        *angle = max_angle + 5.0;
+    if min_rpm > *rpm {
+        *rpm = min_rpm + 100.0;
+    } else if *rpm > max_rpm {
+        *rpm = max_rpm - 100.0;
     }
 }
 
@@ -237,31 +242,6 @@ fn check_for_controllers(system: &GameControllerSubsystem) -> Result<GameControl
     system.open(0).map_err(|e| e.to_string())
 }
 
-pub fn key_down<A: TryInto<Action> + std::fmt::Debug + Copy>(input: &mut Input, action: A) {
-    let Ok(action) = action.try_into() else {
-        println!("unrecognized action {action:#?}");
-        return;
-    };
-    let state = match input.get(&action) {
-        Some(ActionState::Inactive | ActionState::JustInactive) | None => ActionState::JustActive,
-        Some(ActionState::JustActive | ActionState::Active) => ActionState::Active,
-    };
-    input.insert(action, state);
-}
-
-pub fn key_up<A: TryInto<Action> + std::fmt::Debug + Copy>(input: &mut Input, action: A) {
-    let Ok(action) = action.try_into() else {
-        println!("unrecognized key {action:#?}");
-        return;
-    };
-    let state = match input.get(&action) {
-        Some(ActionState::Active | ActionState::JustActive) => ActionState::JustInactive,
-        Some(ActionState::Inactive | ActionState::JustInactive) => ActionState::Inactive,
-        None => unreachable!(),
-    };
-    input.insert(action, state);
-}
-
 fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
     for event in sdl_context.event_pump()?.poll_iter() {
         match event {
@@ -275,14 +255,14 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
             Event::KeyDown {
                 keycode: Some(key), ..
             } => {
-                key_down(input, key);
+                input.key_down(key);
             }
             Event::ControllerButtonDown {
                 timestamp: _,
                 which: _,
                 button,
             } => {
-                key_down(input, button);
+                input.key_down(button);
             }
             Event::MouseButtonDown {
                 timestamp: _,
@@ -293,19 +273,19 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                 x: _,
                 y: _,
             } => {
-                key_down(input, mouse_btn);
+                input.key_down(mouse_btn);
             }
             Event::KeyUp {
                 keycode: Some(key), ..
             } => {
-                key_up(input, key);
+                input.key_up(key);
             }
             Event::ControllerButtonUp {
                 timestamp: _,
                 which: _,
                 button,
             } => {
-                key_up(input, button);
+                input.key_up(button);
             }
             Event::MouseButtonUp {
                 timestamp: _,
@@ -316,7 +296,7 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
                 x: _,
                 y: _,
             } => {
-                key_up(input, mouse_btn);
+                input.key_up(mouse_btn);
             }
 
             Event::ControllerAxisMotion {
@@ -365,6 +345,7 @@ fn main() -> Result<(), String> {
     let texture = texture_creator.load_texture(Path::new("assets/tile.png"))?;
 
     let mut tachometer_angle: f64 = 360.0;
+    let mut flywheel_rpm: f64 = 0.0;
 
     let mut hand = Hand {
         alpha: 0.0,
@@ -396,7 +377,7 @@ fn main() -> Result<(), String> {
             &mut canvas,
             &texture,
             (128, padded_end(height, 256)),
-            tachometer_angle.to_radians(),
+            flywheel_rpm,
         )?;
 
         let smoothed_gear_offset = utils::lerp_2d(gear.alpha, gear.offset, gear.target);
@@ -459,10 +440,7 @@ fn main() -> Result<(), String> {
             gear.reset(0.25, smoothed_gear_offset);
         }
 
-        update_tachometer_angle(
-            &mut tachometer_angle,
-            input.action_active(&Action::Accelerate),
-        );
+        update_flywheel_rpm(&mut flywheel_rpm, input.action_active(&Action::Accelerate));
 
         if input.action_changed(&Action::Grab) {
             let x_square = (smoothed_hand_offset.0 - smoothed_gear_offset.0).powi(2);
