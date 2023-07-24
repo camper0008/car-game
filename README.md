@@ -11,6 +11,7 @@ config flags can be viewed with the `--help` flag
 - mouse controls hand
 - left button to grab
 - w to accelerate
+- s to brake
 - shift to push down clutch
 - esc to quit
 
