@@ -311,10 +311,13 @@ fn main() -> Result<(), String> {
 
         if input.action_active(&Action::Brake) {
             let speed_diff = 50.0 / 60.0;
-            let diff_a = expected_rpm(kmh, gear.speed().gear_ratio());
-            let diff_b = expected_rpm(kmh - speed_diff, gear.speed().gear_ratio());
             kmh -= speed_diff;
-            flywheel_rpm -= diff_a - diff_b;
+
+            if !(input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral) {
+                let rpm_before = expected_rpm(kmh, gear.speed().gear_ratio());
+                let rpm_after = expected_rpm(kmh - speed_diff, gear.speed().gear_ratio());
+                flywheel_rpm -= rpm_before - rpm_after;
+            }
         }
 
         if gear.speed() == Speed::Neutral || input.action_active(&Action::Clutch) {
