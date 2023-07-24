@@ -48,7 +48,13 @@ fn prepare_canvas(window: Window) -> Result<WindowCanvas, String> {
         .map_err(|e| e.to_string())
 }
 
-fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool, speeder_alpha: f64) {
+fn update_flywheel_rpm(
+    rpm: &mut f64,
+    input: &mut Input,
+    speeder_down: bool,
+    clutch_down: bool,
+    speeder_alpha: f64,
+) {
     let min_rpm = 700.0;
     let max_rpm = 8000.0;
 
@@ -62,7 +68,7 @@ fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool, spe
         1.0
     };
 
-    if accelerating {
+    if speeder_down {
         *rpm += (1500.0 / 60.0) * acceleration_rate * speeder_alpha;
     } else {
         *rpm -= 500.0 / 60.0 * deacceleration_rate;
@@ -70,6 +76,7 @@ fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool, spe
     if min_rpm > *rpm {
         *rpm = min_rpm + 50.0;
     } else if *rpm > max_rpm {
+        input.shake_controller();
         *rpm = max_rpm - 100.0;
     }
 }
@@ -369,11 +376,16 @@ fn main() -> Result<(), String> {
         if gear.speed() == Speed::Neutral || input.action_active(&Action::Clutch) {
             clutching_in = false;
             clutching_in_timer = 0.0;
+            let speeder_down = input.action_active(&Action::Accelerate);
+            let clutch_down =
+                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
+            let speeder_alpha = input.speeder_alpha;
             update_flywheel_rpm(
                 &mut flywheel_rpm,
-                input.action_active(&Action::Accelerate),
-                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral,
-                input.speeder_alpha,
+                &mut input,
+                speeder_down,
+                clutch_down,
+                speeder_alpha,
             );
             kmh -= 1.0 / 60.0;
             if kmh < expected_kmh(700.0, Speed::Neutral.gear_ratio()) {
@@ -388,21 +400,22 @@ fn main() -> Result<(), String> {
             clutching_in_timer += 4.0 / 60.0;
 
             if (flywheel_rpm - target).abs() > 500.0 {
-                if let Some(ref mut controller) = input.active_controller {
-                    if let Err(err) = controller.set_rumble(u16::MAX, u16::MAX, 100) {
-                        log::warn!("unable to rumble: {err}");
-                    }
-                }
+                input.shake_controller();
             }
         } else if clutching_in && clutching_in_timer >= 1.0 {
             clutching_in = false;
             clutching_in_timer = 0.0;
         } else {
+            let speeder_down = input.action_active(&Action::Accelerate);
+            let clutch_down =
+                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
+            let speeder_alpha = input.speeder_alpha;
             update_flywheel_rpm(
                 &mut flywheel_rpm,
-                input.action_active(&Action::Accelerate),
-                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral,
-                input.speeder_alpha,
+                &mut input,
+                speeder_down,
+                clutch_down,
+                speeder_alpha,
             );
             kmh = expected_kmh(flywheel_rpm, gear.speed().gear_ratio());
         }

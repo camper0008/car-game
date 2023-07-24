@@ -79,6 +79,14 @@ impl Input {
         }
     }
 
+    pub fn shake_controller(&mut self) {
+        if let Some(controller) = &mut self.active_controller {
+            if let Err(err) = controller.set_rumble(u16::MAX, u16::MAX, 500) {
+                log::warn!("unable to rumble: {err}");
+            }
+        }
+    }
+
     pub fn update_hand_relatively(&mut self, x: i32, y: i32) {
         let reduced_x = self.hand.0 + f64::from(x) / self.mouse_sensitivity;
         let reduced_x = clamp_f64(reduced_x, -1.0, 1.0);
