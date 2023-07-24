@@ -1,4 +1,4 @@
-use crate::{gear::Speed, input::Input, utils::clamp_f64};
+use crate::{gear_stick::Speed, input::Input, utils::clamp_f64};
 
 pub struct Hand {
     pub smooth_factor: f64,

@@ -4,14 +4,13 @@
 
 mod cli;
 mod draw;
-mod gear;
+mod gear_stick;
 mod hand;
 mod input;
-mod macros;
 mod utils;
 
 use cli::{Cli, Parser};
-use gear::{expected_kmh, expected_rpm, Gear, Speed};
+use gear_stick::{expected_kmh, expected_rpm, GearStick, Speed};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
 use sdl2::controller::Axis;
@@ -258,7 +257,7 @@ fn main() -> Result<(), String> {
         target: (0.0, 0.0),
     };
 
-    let mut gear = Gear {
+    let mut gear = GearStick {
         smooth_factor: 0.25,
         held: false,
         offset: (0.0, 0.0),

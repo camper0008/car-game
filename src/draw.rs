@@ -3,8 +3,13 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Texture, WindowCanvas};
 
-use crate::gear::Speed;
-use crate::rect;
+use crate::gear_stick::Speed;
+
+macro_rules! rect(
+    ($x:expr, $y:expr, $w:expr, $h:expr) => (
+        Rect::new($x as i32, $y as i32, $w as u32, $h as u32)
+    )
+);
 
 fn gearstick(
     canvas: &mut WindowCanvas,

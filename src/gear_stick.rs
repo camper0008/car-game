@@ -4,7 +4,7 @@ pub const NORMALIZED_RPM: f64 = 208.78;
 pub const REAR_GEAR_RATIO: f64 = 3.23;
 pub const TIRE_DIAMETER: f64 = 26.5;
 
-pub struct Gear {
+pub struct GearStick {
     pub smooth_factor: f64,
     pub held: bool,
     pub offset: (f64, f64),
@@ -19,7 +19,7 @@ pub fn expected_rpm(kmh: f64, trans_gear_ratio: f64) -> f64 {
     (NORMALIZED_RPM * kmh * REAR_GEAR_RATIO * trans_gear_ratio) / TIRE_DIAMETER
 }
 
-impl Gear {
+impl GearStick {
     pub fn resting_target(&self) -> (f64, f64) {
         let (x, y) = self.offset;
         let x = if (-0.5..=0.5).contains(&y) {
