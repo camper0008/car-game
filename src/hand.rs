@@ -40,7 +40,7 @@ impl Hand {
     }
 }
 
-pub fn clamp_clutch_up(target: (f64, f64), old: (f64, f64), speed: Speed) -> (f64, f64) {
+pub fn clamp_clutch_up(target: (f64, f64), old: (f64, f64), speed: &Speed) -> (f64, f64) {
     let (x_min, x_max) = match speed {
         Speed::Neutral => {
             if target.1 > -0.5 && target.1 < 0.5 {

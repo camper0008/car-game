@@ -346,7 +346,6 @@ fn main() -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
     let texture = texture_creator.load_texture(Path::new("assets/tile.png"))?;
 
-    let mut tachometer_angle: f64 = 360.0;
     let mut flywheel_rpm: f64 = 0.0;
 
     let mut hand = Hand {
@@ -423,7 +422,7 @@ fn main() -> Result<(), String> {
             let target = if input.action_active(&Action::Clutch) {
                 clamp_clutch_down(hand.target, hand.offset)
             } else {
-                clamp_clutch_up(hand.target, hand.offset, gear.state())
+                clamp_clutch_up(hand.target, hand.offset, &gear.state())
             };
             hand.target = target;
             gear.target = target;
