@@ -182,9 +182,7 @@ fn poll_events(
                 timestamp: _,
                 which,
             } => match controllers.open(which).map_err(|e| e.to_string()) {
-                Ok(controller) => {
-                    input.active_controller = Some(controller);
-                }
+                Ok(controller) => input.active_controller = Some(controller),
                 Err(err) => log::error!("unable to connect controller: {err}"),
             },
             Event::ControllerDeviceRemoved {
