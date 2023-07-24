@@ -48,36 +48,39 @@ fn prepare_canvas(window: Window) -> Result<WindowCanvas, String> {
         .map_err(|e| e.to_string())
 }
 
-fn update_flywheel_rpm(
-    rpm: &mut f64,
+fn flywheel_rpm(
+    rpm: f64,
     input: &mut Input,
     speeder_down: bool,
     clutch_down: bool,
     speeder_alpha: f64,
-) {
+) -> f64 {
     let min_rpm = 700.0;
     let max_rpm = 8000.0;
 
     let rpm_to_accel = |rpm: f64| -rpm.powf(1.3) + 1.8 * rpm + 1.0;
     let rpm_to_deaccel = |rpm: f64| rpm.powf(1.3) + 1.0;
 
-    let acceleration_rate = rpm_to_accel(*rpm / 1000.0);
+    let acceleration_rate = rpm_to_accel(rpm / 1000.0);
     let deacceleration_rate = if clutch_down {
-        rpm_to_deaccel(*rpm / 1000.0)
+        rpm_to_deaccel(rpm / 1000.0)
     } else {
         1.0
     };
 
-    if speeder_down {
-        *rpm += (1500.0 / 60.0) * acceleration_rate * speeder_alpha;
+    let rpm = if speeder_down {
+        rpm + (1500.0 / 60.0) * acceleration_rate * speeder_alpha
     } else {
-        *rpm -= 500.0 / 60.0 * deacceleration_rate;
-    }
-    if min_rpm > *rpm {
-        *rpm = min_rpm + 50.0;
-    } else if *rpm > max_rpm {
+        rpm - 500.0 / 60.0 * deacceleration_rate
+    };
+
+    if min_rpm > rpm {
+        min_rpm + 50.0
+    } else if rpm > max_rpm {
         input.shake_controller();
-        *rpm = max_rpm - 100.0;
+        max_rpm - 100.0
+    } else {
+        rpm
     }
 }
 
@@ -214,6 +217,12 @@ fn poll_events(
     Ok(())
 }
 
+struct ClutchCooldown {
+    active: bool,
+    start_rpm: f64,
+    timer: f64,
+}
+
 fn main() -> Result<(), String> {
     let cli = Cli::parse();
     simple_logger::SimpleLogger::new()
@@ -237,9 +246,11 @@ fn main() -> Result<(), String> {
     let mut rpm: f64 = 0.0;
     let mut kmh: f64 = 5.0;
     let mut previous_speed = Speed::Neutral;
-    let mut clutching_in_start_rpm = 0.0;
-    let mut clutching_in_timer = 0.0;
-    let mut clutching_in = false;
+    let mut clutch_cooldown = ClutchCooldown {
+        start_rpm: 0.0,
+        timer: 0.0,
+        active: false,
+    };
 
     let mut hand = Hand {
         alpha: 0.0,
@@ -311,16 +322,8 @@ fn main() -> Result<(), String> {
             gear.target = gear.resting_target();
         };
 
-        hand.tick(12.0 / 60.0);
-        gear.tick(12.0 / 60.0);
-
-        if Hand::has_changed(&input) {
-            hand.reset(0.0, smoothed_hand_offset);
-            gear.reset(0.0, smoothed_gear_offset);
-        } else {
-            hand.reset(0.25, smoothed_hand_offset);
-            gear.reset(0.25, smoothed_gear_offset);
-        }
+        hand.reset(smoothed_hand_offset);
+        gear.reset(smoothed_gear_offset);
 
         if input.action_active(&Action::Brake) {
             let speed_diff = (50.0 / 60.0) * input.brake_alpha;
@@ -334,49 +337,38 @@ fn main() -> Result<(), String> {
         }
 
         if gear.speed() == Speed::Neutral || input.action_active(&Action::Clutch) {
-            clutching_in = false;
-            clutching_in_timer = 0.0;
+            clutch_cooldown.active = false;
+            clutch_cooldown.timer = 0.0;
+
             let speeder_down = input.action_active(&Action::Accelerate);
             let clutch_down =
                 input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
             let speeder_alpha = input.speeder_alpha;
-            update_flywheel_rpm(
-                &mut rpm,
-                &mut input,
-                speeder_down,
-                clutch_down,
-                speeder_alpha,
-            );
+            rpm = flywheel_rpm(rpm, &mut input, speeder_down, clutch_down, speeder_alpha);
             kmh -= 1.0 / 60.0;
             if kmh < expected_kmh(700.0, Speed::Neutral.gear_ratio()) {
                 kmh = expected_kmh(700.0, Speed::Neutral.gear_ratio());
             }
-        } else if previous_speed == Speed::Neutral && !clutching_in {
-            clutching_in = true;
-            clutching_in_start_rpm = rpm;
-        } else if clutching_in_timer < 1.0 && clutching_in {
+        } else if previous_speed == Speed::Neutral && !clutch_cooldown.active {
+            clutch_cooldown.active = true;
+            clutch_cooldown.start_rpm = rpm;
+        } else if clutch_cooldown.timer < 1.0 && clutch_cooldown.active {
             let target = expected_rpm(kmh, gear.speed().gear_ratio());
-            rpm = lerp_1d(clutching_in_timer, clutching_in_start_rpm, target);
-            clutching_in_timer += 4.0 / 60.0;
+            rpm = lerp_1d(clutch_cooldown.timer, clutch_cooldown.start_rpm, target);
+            clutch_cooldown.timer += 4.0 / 60.0;
 
             if (rpm - target).abs() > 500.0 {
                 input.shake_controller();
             }
-        } else if clutching_in && clutching_in_timer >= 1.0 {
-            clutching_in = false;
-            clutching_in_timer = 0.0;
+        } else if clutch_cooldown.active && clutch_cooldown.timer >= 1.0 {
+            clutch_cooldown.active = false;
+            clutch_cooldown.timer = 0.0;
         } else {
             let speeder_down = input.action_active(&Action::Accelerate);
             let clutch_down =
                 input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
             let speeder_alpha = input.speeder_alpha;
-            update_flywheel_rpm(
-                &mut rpm,
-                &mut input,
-                speeder_down,
-                clutch_down,
-                speeder_alpha,
-            );
+            rpm = flywheel_rpm(rpm, &mut input, speeder_down, clutch_down, speeder_alpha);
             kmh = expected_kmh(rpm, gear.speed().gear_ratio());
         }
 
@@ -387,12 +379,14 @@ fn main() -> Result<(), String> {
 
             if distance < 0.5 && input.action_active(&Action::Grab) {
                 gear.held = true;
-                gear.reset(0.0, smoothed_gear_offset);
+                gear.reset(smoothed_gear_offset);
             } else {
                 gear.held = false;
             }
         }
-        Hand::action_tick(&mut input);
+
+        input.action_tick(Action::Grab);
+        input.action_tick(Action::Clutch);
 
         previous_speed = if input.action_active(&Action::Clutch) {
             Speed::Neutral

@@ -1,8 +1,4 @@
-use crate::{
-    gear::Speed,
-    input::{Action, Input},
-    utils::clamp_f64,
-};
+use crate::{gear::Speed, input::Input, utils::clamp_f64};
 
 pub struct Hand {
     pub alpha: f64,
@@ -15,28 +11,9 @@ impl Hand {
         input.hand
     }
 
-    pub fn action_tick(input: &mut Input) {
-        input.action_tick(Action::Grab);
-        input.action_tick(Action::Clutch);
-    }
-
-    pub fn has_changed(input: &Input) -> bool {
-        let grab = input.action_changed(&Action::Grab);
-        let clutch = input.action_changed(&Action::Clutch);
-
-        grab || clutch
-    }
-
-    pub fn reset(&mut self, alpha: f64, offset: (f64, f64)) {
-        self.alpha = alpha;
+    pub fn reset(&mut self, offset: (f64, f64)) {
+        self.alpha = 0.25;
         self.offset = offset;
-    }
-
-    pub fn tick(&mut self, tick: f64) {
-        self.alpha += tick;
-        if self.alpha > 1.0 {
-            self.alpha = 1.0;
-        }
     }
 }
 

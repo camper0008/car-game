@@ -81,16 +81,9 @@ impl Gear {
         }
     }
 
-    pub fn reset(&mut self, alpha: f64, offset: (f64, f64)) {
-        self.alpha = alpha;
+    pub fn reset(&mut self, offset: (f64, f64)) {
+        self.alpha = 0.25;
         self.offset = offset;
-    }
-
-    pub fn tick(&mut self, tick: f64) {
-        self.alpha += tick;
-        if self.alpha > 1.0 {
-            self.alpha = 1.0;
-        }
     }
 }
 
