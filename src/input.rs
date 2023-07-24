@@ -30,6 +30,7 @@ impl TryFrom<sdl2::keyboard::Keycode> for Action {
             sdl2::keyboard::Keycode::S | sdl2::keyboard::Keycode::Down => Ok(Action::Brake),
             sdl2::keyboard::Keycode::Space => Ok(Action::Grab),
             sdl2::keyboard::Keycode::LShift => Ok(Action::Clutch),
+            sdl2::keyboard::Keycode::Escape => Ok(Action::Quit),
             key => Err(format!("unrecognized keycode: {key:#?}")),
         }
     }
@@ -127,8 +128,8 @@ impl Input {
     pub fn get(&self, action: &Action) -> Option<&ActionState> {
         self.action_map.get(action)
     }
-    pub fn insert(&mut self, action: Action, state: ActionState) -> Option<ActionState> {
-        self.action_map.insert(action, state)
+    pub fn insert(&mut self, action: Action, state: ActionState) {
+        self.action_map.insert(action, state);
     }
     pub fn action_active(&self, action: &Action) -> bool {
         matches!(

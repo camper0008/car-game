@@ -1,14 +1,32 @@
-use crate::{gear_stick::Gear, input::Input, utils::clamp_f64};
+use crate::{
+    gear_stick::Gear,
+    input::Input,
+    utils::{self, clamp_f64},
+};
 
 pub struct Hand {
-    pub smooth_factor: f64,
+    smooth_factor: f64,
     pub offset: (f64, f64),
     pub target: (f64, f64),
+}
+
+impl Default for Hand {
+    fn default() -> Self {
+        Self {
+            smooth_factor: 0.25,
+            offset: (0.25, 0.25),
+            target: (0.25, 0.25),
+        }
+    }
 }
 
 impl Hand {
     pub fn target(input: &Input) -> (f64, f64) {
         input.hand
+    }
+
+    pub fn next_offset(&self) -> (f64, f64) {
+        utils::lerp_2d(self.smooth_factor, self.offset, self.target)
     }
 
     pub fn set_origin(&mut self, offset: (f64, f64)) {

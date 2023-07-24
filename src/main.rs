@@ -12,7 +12,7 @@ mod utils;
 use cli::{Cli, Parser};
 use gear_stick::{expected_kmh, expected_rpm, Gear, GearStick};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
-use input::{Action, ActionState, Input};
+use input::{Action, Input};
 use sdl2::controller::Axis;
 use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
@@ -58,7 +58,7 @@ fn flywheel_rpm(
     let max_rpm = 8000.0;
 
     let rpm_to_accel = |rpm: f64| -rpm.powf(1.3) + 1.8 * rpm + 1.0;
-    let rpm_to_deaccel = |rpm: f64| rpm.powf(1.3) + 1.0;
+    let rpm_to_deaccel = |rpm: f64| rpm.powf(1.1) + 1.0;
 
     let acceleration_rate = rpm_to_accel(rpm / 1000.0);
     let deacceleration_rate = if neutral_gear {
@@ -74,7 +74,7 @@ fn flywheel_rpm(
     };
 
     if min_rpm > rpm {
-        min_rpm + 50.0
+        min_rpm
     } else if rpm > max_rpm {
         input.shake_controller();
         max_rpm - 100.0
@@ -107,21 +107,15 @@ fn poll_events(
             | Event::KeyDown {
                 keycode: Some(Keycode::Escape),
                 ..
-            } => {
-                input.insert(Action::Quit, ActionState::Active);
-            }
+            } => input.key_down(Keycode::Escape),
             Event::KeyDown {
                 keycode: Some(key), ..
-            } => {
-                input.key_down(key);
-            }
+            } => input.key_down(key),
             Event::ControllerButtonDown {
                 timestamp: _,
                 which: _,
                 button,
-            } => {
-                input.key_down(button);
-            }
+            } => input.key_down(button),
             Event::MouseButtonDown {
                 timestamp: _,
                 window_id: _,
@@ -130,21 +124,15 @@ fn poll_events(
                 clicks: _,
                 x: _,
                 y: _,
-            } => {
-                input.key_down(mouse_btn);
-            }
+            } => input.key_down(mouse_btn),
             Event::KeyUp {
                 keycode: Some(key), ..
-            } => {
-                input.key_up(key);
-            }
+            } => input.key_up(key),
             Event::ControllerButtonUp {
                 timestamp: _,
                 which: _,
                 button,
-            } => {
-                input.key_up(button);
-            }
+            } => input.key_up(button),
             Event::MouseButtonUp {
                 timestamp: _,
                 window_id: _,
@@ -153,10 +141,7 @@ fn poll_events(
                 clicks: _,
                 x: _,
                 y: _,
-            } => {
-                input.key_up(mouse_btn);
-            }
-
+            } => input.key_up(mouse_btn),
             Event::ControllerAxisMotion {
                 timestamp: _,
                 which: _,
@@ -192,9 +177,7 @@ fn poll_events(
                 y: _,
                 xrel,
                 yrel,
-            } => {
-                input.update_hand_relatively(xrel, yrel);
-            }
+            } => input.update_hand_relatively(xrel, yrel),
             Event::ControllerDeviceAdded {
                 timestamp: _,
                 which,
@@ -204,7 +187,6 @@ fn poll_events(
                 }
                 Err(err) => log::error!("unable to connect controller: {err}"),
             },
-
             Event::ControllerDeviceRemoved {
                 timestamp: _,
                 which: _,
@@ -222,6 +204,26 @@ struct ClutchCooldown {
     timer: f64,
 }
 
+impl Default for ClutchCooldown {
+    fn default() -> Self {
+        Self {
+            start_rpm: 0.0,
+            timer: 0.0,
+            active: false,
+        }
+    }
+}
+
+fn window_size(window: &Window) -> Result<(i16, i16), String> {
+    let (width, height) = window.size();
+    let size = (
+        i16::try_from(width).map_err(|e| e.to_string())?,
+        i16::try_from(height).map_err(|e| e.to_string())?,
+    );
+
+    Ok(size)
+}
+
 fn main() -> Result<(), String> {
     let cli = Cli::parse();
     simple_logger::SimpleLogger::new()
@@ -232,44 +234,24 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let controller_system = sdl_context.game_controller()?;
     let window = prepare_window(&sdl_context, !cli.windowed)?;
-    let (width, height) = window.size();
-    let (width, height) = (
-        i16::try_from(width).expect("invalid width"),
-        i16::try_from(height).expect("invalid height"),
-    );
+    let (width, height) = window_size(&window)?;
     let mut canvas = prepare_canvas(window)?;
 
     let texture_creator = canvas.texture_creator();
     let texture = texture_creator.load_texture(Path::new("assets/tile.png"))?;
 
     let mut rpm: f64 = 0.0;
-    let mut kmh: f64 = 5.0;
+    let mut kmh: f64 = 0.0;
     let mut previous_gear = Gear::Neutral;
-    let mut clutch_cooldown = ClutchCooldown {
-        start_rpm: 0.0,
-        timer: 0.0,
-        active: false,
-    };
-
-    let mut hand = Hand {
-        smooth_factor: 0.25,
-        offset: (0.0, 0.0),
-        target: (0.0, 0.0),
-    };
-
-    let mut gear_stick = GearStick {
-        smooth_factor: 0.25,
-        held: false,
-        offset: (0.0, 0.0),
-        target: (0.0, 0.0),
-    };
-
+    let mut clutch_cooldown = ClutchCooldown::default();
+    let mut hand = Hand::default();
+    let mut gear_stick = GearStick::default();
     let mut input = Input::with_sensitivity(cli.mouse_sensitivity);
 
     match check_for_controllers(&mut input, &controller_system) {
         Ok(_) => log::info!("controller connected"),
         Err(err) => {
-            log::warn!("error connecting controller: {err}");
+            log::debug!("error connecting controller: {err}");
         }
     };
 
@@ -278,14 +260,10 @@ fn main() -> Result<(), String> {
         canvas.clear();
         sdl_context.mouse().set_relative_mouse_mode(true);
 
-        let hand_offset = utils::lerp_2d(hand.smooth_factor, hand.offset, hand.target);
+        let hand_offset = hand.next_offset();
         hand.set_origin(hand_offset);
 
-        let gear_stick_offset = utils::lerp_2d(
-            gear_stick.smooth_factor,
-            gear_stick.offset,
-            gear_stick.target,
-        );
+        let gear_stick_offset = gear_stick.next_offset();
         gear_stick.set_origin(gear_stick_offset);
 
         let gear = gear_stick.gear(input.action_active(&Action::Clutch));
@@ -310,11 +288,12 @@ fn main() -> Result<(), String> {
                 brake_down: input.action_active(&Action::Brake),
             },
         )?;
+
         canvas.present();
 
         poll_events(&sdl_context, &mut input, &controller_system)?;
 
-        if input.get(&Action::Quit).is_some() {
+        if input.action_active(&Action::Quit) {
             break 'game_loop Ok(());
         }
 

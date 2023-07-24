@@ -5,7 +5,7 @@ pub const REAR_GEAR_RATIO: f64 = 3.23;
 pub const TIRE_DIAMETER: f64 = 26.5;
 
 pub struct GearStick {
-    pub smooth_factor: f64,
+    smooth_factor: f64,
     pub held: bool,
     pub offset: (f64, f64),
     pub target: (f64, f64),
@@ -20,6 +20,9 @@ pub fn expected_rpm(kmh: f64, trans_gear_ratio: f64) -> f64 {
 }
 
 impl GearStick {
+    pub fn next_offset(&self) -> (f64, f64) {
+        utils::lerp_2d(self.smooth_factor, self.offset, self.target)
+    }
     pub fn resting_target(&self) -> (f64, f64) {
         let (x, y) = self.offset;
         let x = if (-0.5..=0.5).contains(&y) {
@@ -86,6 +89,17 @@ impl GearStick {
 
     pub fn set_origin(&mut self, offset: (f64, f64)) {
         self.offset = offset;
+    }
+}
+
+impl Default for GearStick {
+    fn default() -> Self {
+        Self {
+            smooth_factor: 0.25,
+            held: false,
+            offset: (0.0, 0.0),
+            target: (0.0, 0.0),
+        }
     }
 }
 
