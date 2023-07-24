@@ -65,7 +65,7 @@ fn hand(
     Ok(())
 }
 
-pub struct PedalState {
+pub struct Pedals {
     pub clutch_down: bool,
     pub speeder_down: bool,
     pub brake_down: bool,
@@ -75,11 +75,11 @@ fn pedals(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    PedalState {
+    Pedals {
         clutch_down,
         speeder_down,
         brake_down,
-    }: &PedalState,
+    }: &Pedals,
 ) -> Result<(), String> {
     let size = 160;
 
@@ -114,10 +114,10 @@ fn gear_state(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    speed: Speed,
+    speed: &Speed,
     is_clutched: bool,
 ) -> Result<(), String> {
-    let speed = if is_clutched { Speed::Neutral } else { speed };
+    let speed = if is_clutched { &Speed::Neutral } else { speed };
 
     let initial_x = 128;
     let initial_y = 64;
@@ -199,7 +199,7 @@ impl From<i64> for Digit {
         if !(0..=9).contains(&value) {
             unreachable!("value {value} should be 0 >= {value} >= 9");
         }
-        values[value as usize].clone()
+        values[value.unsigned_abs() as usize].clone()
     }
 }
 
@@ -335,32 +335,36 @@ fn center(max: i16, length: i16) -> i16 {
     (max / 2) - length / 2
 }
 
-pub struct HandState {
+pub struct Hand {
     pub offset: (f64, f64),
     pub grabbing: bool,
+}
+
+pub struct Peripherals<'a> {
+    pub rpm: f64,
+    pub kmh: f64,
+    pub speed: &'a Speed,
 }
 
 pub fn all(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     window_size: (i16, i16),
-    rpm: f64,
-    kmh: f64,
+    Peripherals { rpm, kmh, speed }: &Peripherals,
     gear_offset: (f64, f64),
-    hand_state: HandState,
-    pedal_state: PedalState,
-    speed: Speed,
+    hand_state: &Hand,
+    pedal_state: &Pedals,
 ) -> Result<(), String> {
     let (width, height) = window_size;
     let gearstick_position = (width - 128 * 4, padded_end(height, 160));
 
-    tachometer(canvas, &texture, (128, padded_end(height, 256)), rpm)?;
+    tachometer(canvas, texture, (128, padded_end(height, 256)), *rpm)?;
 
-    gearstick(canvas, &texture, gearstick_position, gear_offset)?;
+    gearstick(canvas, texture, gearstick_position, gear_offset)?;
 
     hand(
         canvas,
-        &texture,
+        texture,
         gearstick_position,
         hand_state.offset,
         hand_state.grabbing,
@@ -368,14 +372,14 @@ pub fn all(
 
     pedals(
         canvas,
-        &texture,
+        texture,
         (center(width, 160), padded_end(height, 160) + 96),
-        &pedal_state,
+        pedal_state,
     )?;
 
     gear_state(
         canvas,
-        &texture,
+        texture,
         (center(width, 192), padded_end(height, 128) - 64),
         speed,
         pedal_state.clutch_down,
@@ -383,9 +387,9 @@ pub fn all(
 
     speedometer(
         canvas,
-        &texture,
+        texture,
         (center(width, 160 + 96), padded_end(height, 128) - 128),
-        kmh,
+        *kmh,
     )?;
 
     Ok(())

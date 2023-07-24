@@ -171,9 +171,8 @@ impl Input {
         return;
     };
         let state = match self.get(&action) {
-            Some(ActionState::Active | ActionState::JustActive) => ActionState::JustInactive,
+            Some(ActionState::Active | ActionState::JustActive) | None => ActionState::JustInactive,
             Some(ActionState::Inactive | ActionState::JustInactive) => ActionState::Inactive,
-            None => ActionState::JustInactive,
         };
         self.insert(action, state);
     }

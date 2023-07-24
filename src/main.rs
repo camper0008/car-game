@@ -1,5 +1,6 @@
 #![warn(clippy::unwrap_used)]
 #![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::too_many_lines)]
 
 mod cli;
 mod draw;
@@ -10,7 +11,6 @@ mod macros;
 mod utils;
 
 use cli::{Cli, Parser};
-use draw::PedalState;
 use gear::{expected_kmh, expected_rpm, Gear, Speed};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
@@ -52,7 +52,7 @@ fn flywheel_rpm(
     rpm: f64,
     input: &mut Input,
     speeder_down: bool,
-    clutch_down: bool,
+    neutral_gear: bool,
     speeder_alpha: f64,
 ) -> f64 {
     let min_rpm = 700.0;
@@ -62,7 +62,7 @@ fn flywheel_rpm(
     let rpm_to_deaccel = |rpm: f64| rpm.powf(1.3) + 1.0;
 
     let acceleration_rate = rpm_to_accel(rpm / 1000.0);
-    let deacceleration_rate = if clutch_down {
+    let deacceleration_rate = if neutral_gear {
         rpm_to_deaccel(rpm / 1000.0)
     } else {
         1.0
@@ -172,7 +172,7 @@ fn poll_events(
                     } else {
                         input.key_down(Keycode::Down);
                     }
-                    input.brake_alpha = value as f64 / i16::MAX as f64;
+                    input.brake_alpha = f64::from(value) / f64::from(i16::MAX);
                 }
                 Axis::TriggerRight => {
                     if value < 100 {
@@ -180,7 +180,7 @@ fn poll_events(
                     } else {
                         input.key_down(Keycode::Up);
                     }
-                    input.speeder_alpha = value as f64 / i16::MAX as f64;
+                    input.speeder_alpha = f64::from(value) / f64::from(i16::MAX);
                 }
                 _ => {}
             },
@@ -253,13 +253,13 @@ fn main() -> Result<(), String> {
     };
 
     let mut hand = Hand {
-        alpha: 0.0,
+        smooth_factor: 0.25,
         offset: (0.0, 0.0),
         target: (0.0, 0.0),
     };
 
     let mut gear = Gear {
-        alpha: 0.0,
+        smooth_factor: 0.25,
         held: false,
         offset: (0.0, 0.0),
         target: (0.0, 0.0),
@@ -270,7 +270,7 @@ fn main() -> Result<(), String> {
     match check_for_controllers(&mut input, &controller_system) {
         Ok(_) => log::info!("controller connected"),
         Err(err) => {
-            log::warn!("error connecting controller: {err}")
+            log::warn!("error connecting controller: {err}");
         }
     };
 
@@ -279,26 +279,33 @@ fn main() -> Result<(), String> {
         canvas.clear();
         sdl_context.mouse().set_relative_mouse_mode(true);
 
-        let smoothed_hand_offset = utils::lerp_2d(hand.alpha, hand.offset, hand.target);
-        let smoothed_gear_offset = utils::lerp_2d(gear.alpha, gear.offset, gear.target);
+        let hand_offset = utils::lerp_2d(hand.smooth_factor, hand.offset, hand.target);
+        hand.set_origin(hand_offset);
+
+        let gear_offset = utils::lerp_2d(gear.smooth_factor, gear.offset, gear.target);
+        gear.set_origin(gear_offset);
+
+        let gear_speed = gear.speed(input.action_active(&Action::Clutch));
 
         draw::all(
             &mut canvas,
             &texture,
             (width, height),
-            rpm,
-            kmh,
-            smoothed_gear_offset,
-            draw::HandState {
-                offset: smoothed_hand_offset,
+            &draw::Peripherals {
+                rpm,
+                kmh,
+                speed: &gear_speed,
+            },
+            gear_offset,
+            &draw::Hand {
+                offset: hand_offset,
                 grabbing: input.action_active(&Action::Grab),
             },
-            PedalState {
+            &draw::Pedals {
                 speeder_down: input.action_active(&Action::Accelerate),
                 clutch_down: input.action_active(&Action::Clutch),
                 brake_down: input.action_active(&Action::Brake),
             },
-            gear.speed(),
         )?;
         canvas.present();
 
@@ -309,12 +316,11 @@ fn main() -> Result<(), String> {
         }
 
         hand.target = Hand::target(&input);
-
         if gear.held {
             let target = if input.action_active(&Action::Clutch) {
                 clamp_clutch_down(hand.target, hand.offset)
             } else {
-                clamp_clutch_up(hand.target, hand.offset, &gear.speed())
+                clamp_clutch_up(hand.target, hand.offset, &gear_speed)
             };
             hand.target = target;
             gear.target = target;
@@ -322,29 +328,25 @@ fn main() -> Result<(), String> {
             gear.target = gear.resting_target();
         };
 
-        hand.reset(smoothed_hand_offset);
-        gear.reset(smoothed_gear_offset);
-
         if input.action_active(&Action::Brake) {
             let speed_diff = (50.0 / 60.0) * input.brake_alpha;
             kmh -= speed_diff;
 
-            if !(input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral) {
-                let rpm_before = expected_rpm(kmh, gear.speed().gear_ratio());
-                let rpm_after = expected_rpm(kmh - speed_diff, gear.speed().gear_ratio());
+            if !(gear_speed == Speed::Neutral) {
+                let rpm_before = expected_rpm(kmh, gear_speed.gear_ratio());
+                let rpm_after = expected_rpm(kmh - speed_diff, gear_speed.gear_ratio());
                 rpm -= rpm_before - rpm_after;
             }
         }
 
-        if gear.speed() == Speed::Neutral || input.action_active(&Action::Clutch) {
+        if gear_speed == Speed::Neutral {
             clutch_cooldown.active = false;
             clutch_cooldown.timer = 0.0;
 
             let speeder_down = input.action_active(&Action::Accelerate);
-            let clutch_down =
-                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
+            let neutral_gear = gear_speed == Speed::Neutral;
             let speeder_alpha = input.speeder_alpha;
-            rpm = flywheel_rpm(rpm, &mut input, speeder_down, clutch_down, speeder_alpha);
+            rpm = flywheel_rpm(rpm, &mut input, speeder_down, neutral_gear, speeder_alpha);
             kmh -= 1.0 / 60.0;
             if kmh < expected_kmh(700.0, Speed::Neutral.gear_ratio()) {
                 kmh = expected_kmh(700.0, Speed::Neutral.gear_ratio());
@@ -353,7 +355,7 @@ fn main() -> Result<(), String> {
             clutch_cooldown.active = true;
             clutch_cooldown.start_rpm = rpm;
         } else if clutch_cooldown.timer < 1.0 && clutch_cooldown.active {
-            let target = expected_rpm(kmh, gear.speed().gear_ratio());
+            let target = expected_rpm(kmh, gear_speed.gear_ratio());
             rpm = lerp_1d(clutch_cooldown.timer, clutch_cooldown.start_rpm, target);
             clutch_cooldown.timer += 4.0 / 60.0;
 
@@ -365,34 +367,24 @@ fn main() -> Result<(), String> {
             clutch_cooldown.timer = 0.0;
         } else {
             let speeder_down = input.action_active(&Action::Accelerate);
-            let clutch_down =
-                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral;
+            let neutral_gear = gear_speed == Speed::Neutral;
             let speeder_alpha = input.speeder_alpha;
-            rpm = flywheel_rpm(rpm, &mut input, speeder_down, clutch_down, speeder_alpha);
-            kmh = expected_kmh(rpm, gear.speed().gear_ratio());
+            rpm = flywheel_rpm(rpm, &mut input, speeder_down, neutral_gear, speeder_alpha);
+            kmh = expected_kmh(rpm, gear_speed.gear_ratio());
         }
 
         if input.action_changed(&Action::Grab) {
-            let x_square = (smoothed_hand_offset.0 - smoothed_gear_offset.0).powi(2);
-            let y_square = (smoothed_hand_offset.1 - smoothed_gear_offset.1).powi(2);
+            let x_square = (hand_offset.0 - gear_offset.0).powi(2);
+            let y_square = (hand_offset.1 - gear_offset.1).powi(2);
             let distance = (x_square + y_square).sqrt();
 
-            if distance < 0.5 && input.action_active(&Action::Grab) {
-                gear.held = true;
-                gear.reset(smoothed_gear_offset);
-            } else {
-                gear.held = false;
-            }
+            gear.held = input.action_active(&Action::Grab) && distance < 0.5;
         }
 
         input.action_tick(Action::Grab);
         input.action_tick(Action::Clutch);
 
-        previous_speed = if input.action_active(&Action::Clutch) {
-            Speed::Neutral
-        } else {
-            gear.speed()
-        };
+        previous_speed = gear_speed;
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

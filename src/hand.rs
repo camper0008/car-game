@@ -1,7 +1,7 @@
 use crate::{gear::Speed, input::Input, utils::clamp_f64};
 
 pub struct Hand {
-    pub alpha: f64,
+    pub smooth_factor: f64,
     pub offset: (f64, f64),
     pub target: (f64, f64),
 }
@@ -11,8 +11,7 @@ impl Hand {
         input.hand
     }
 
-    pub fn reset(&mut self, offset: (f64, f64)) {
-        self.alpha = 0.25;
+    pub fn set_origin(&mut self, offset: (f64, f64)) {
         self.offset = offset;
     }
 }
