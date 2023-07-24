@@ -49,7 +49,7 @@ impl Gear {
         (x, y)
     }
 
-    pub fn state(&self) -> Speed {
+    pub fn speed(&self) -> Speed {
         let (x, y) = utils::lerp_2d(self.alpha, self.offset, self.target);
 
         if (-0.9..=0.9).contains(&y) {

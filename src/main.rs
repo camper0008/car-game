@@ -133,7 +133,7 @@ fn draw_gear_state(
     let state = if is_clutched {
         Speed::Neutral
     } else {
-        gear.state()
+        gear.speed()
     };
 
     let initial_x = 128;
@@ -221,7 +221,7 @@ impl From<i64> for Digit {
     }
 }
 
-fn get_digit(value: i64, digit_place: i64, negative: bool) -> Digit {
+fn get_digit(value: i64, digit_place: i64) -> Digit {
     if value >= digit_place {
         let value = value % (digit_place * 10);
         let digit = (value - value % digit_place) / digit_place;
@@ -260,8 +260,8 @@ fn draw_kmh(
     let negative = kmh.is_negative();
     let kmh = kmh.abs();
     let first_digit: Digit = (kmh % 10).into();
-    let second_digit = get_digit(kmh, 10, negative);
-    let third_digit = get_digit(kmh, 100, negative);
+    let second_digit = get_digit(kmh, 10);
+    let third_digit = get_digit(kmh, 100);
 
     canvas.copy(
         texture,
@@ -487,6 +487,7 @@ fn main() -> Result<(), String> {
 
     let mut flywheel_rpm: f64 = 0.0;
     let mut kmh: f64 = 5.0;
+    let mut previous_speed = Speed::Neutral;
 
     let mut hand = Hand {
         alpha: 0.0,
@@ -575,7 +576,7 @@ fn main() -> Result<(), String> {
             let target = if input.action_active(&Action::Clutch) {
                 clamp_clutch_down(hand.target, hand.offset)
             } else {
-                clamp_clutch_up(hand.target, hand.offset, &gear.state())
+                clamp_clutch_up(hand.target, hand.offset, &gear.speed())
             };
             hand.target = target;
             gear.target = target;
@@ -595,10 +596,10 @@ fn main() -> Result<(), String> {
         }
 
         update_flywheel_rpm(&mut flywheel_rpm, input.action_active(&Action::Accelerate));
-        if gear.state() == Speed::Neutral {
+        if gear.speed() == Speed::Neutral {
             kmh -= 1.0 / 60.0;
         } else {
-            kmh = expected_kmh(flywheel_rpm, gear.state().gear_ratio());
+            kmh = expected_kmh(flywheel_rpm, gear.speed().gear_ratio());
         }
 
         if input.action_changed(&Action::Grab) {
@@ -614,6 +615,8 @@ fn main() -> Result<(), String> {
             }
         }
         Hand::action_tick(&mut input);
+
+        previous_speed = gear.speed();
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
