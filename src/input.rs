@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use sdl2::controller::GameController;
+
 use crate::utils::clamp_f64;
 
 #[derive(Debug)]
@@ -59,7 +61,10 @@ impl TryFrom<sdl2::mouse::MouseButton> for Action {
 pub struct Input {
     action_map: HashMap<Action, ActionState>,
     mouse_sensitivity: f64,
+    pub brake_alpha: f64,
+    pub speeder_alpha: f64,
     pub hand: (f64, f64),
+    pub active_controller: Option<GameController>,
 }
 
 impl Input {
@@ -68,6 +73,9 @@ impl Input {
             action_map: HashMap::new(),
             hand: (0.0, 0.0),
             mouse_sensitivity,
+            brake_alpha: 1.0,
+            speeder_alpha: 1.0,
+            active_controller: None,
         }
     }
 
@@ -137,7 +145,7 @@ impl Input {
 
     pub fn key_down<A: TryInto<Action> + std::fmt::Debug + Copy>(&mut self, action: A) {
         let Ok(action) = action.try_into() else {
-        println!("unrecognized action {action:#?}");
+        log::debug!("unrecognized action {action:#?}");
         return;
     };
         let state = match self.get(&action) {
@@ -151,13 +159,13 @@ impl Input {
 
     pub fn key_up<A: TryInto<Action> + std::fmt::Debug + Copy>(&mut self, action: A) {
         let Ok(action) = action.try_into() else {
-        println!("unrecognized key {action:#?}");
+        log::debug!("unrecognized key {action:#?}");
         return;
     };
         let state = match self.get(&action) {
             Some(ActionState::Active | ActionState::JustActive) => ActionState::JustInactive,
             Some(ActionState::Inactive | ActionState::JustInactive) => ActionState::Inactive,
-            None => unreachable!(),
+            None => ActionState::JustInactive,
         };
         self.insert(action, state);
     }

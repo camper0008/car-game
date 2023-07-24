@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.3.19", features = ["derive"] }
+log = "0.4.19"
 sdl2 = { version = "0.35.2", features = ["image", "gfx"] }
+simple_logger = { version = "4.2.0", default-features = false, features = ["colors", "stderr"] }

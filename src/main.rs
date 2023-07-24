@@ -14,7 +14,7 @@ use draw::PedalState;
 use gear::{expected_kmh, expected_rpm, Gear, Speed};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
-use sdl2::controller::{Axis, GameController};
+use sdl2::controller::Axis;
 use sdl2::event::Event;
 use sdl2::image::{InitFlag, LoadTexture};
 use sdl2::keyboard::Keycode;
@@ -48,7 +48,7 @@ fn prepare_canvas(window: Window) -> Result<WindowCanvas, String> {
         .map_err(|e| e.to_string())
 }
 
-fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool) {
+fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool, speeder_alpha: f64) {
     let min_rpm = 700.0;
     let max_rpm = 8000.0;
 
@@ -63,7 +63,7 @@ fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool) {
     };
 
     if accelerating {
-        *rpm += (1500.0 / 60.0) * acceleration_rate;
+        *rpm += (1500.0 / 60.0) * acceleration_rate * speeder_alpha;
     } else {
         *rpm -= 500.0 / 60.0 * deacceleration_rate;
     }
@@ -82,15 +82,24 @@ fn center(max: i16, length: i16) -> i16 {
     (max / 2) - length / 2
 }
 
-fn check_for_controllers(system: &GameControllerSubsystem) -> Result<GameController, String> {
+fn check_for_controllers(
+    input: &mut Input,
+    system: &GameControllerSubsystem,
+) -> Result<(), String> {
     if system.num_joysticks()? == 0 {
         return Err("no controllers connected".to_string());
     }
 
-    system.open(0).map_err(|e| e.to_string())
+    let controller = system.open(0).map_err(|e| e.to_string())?;
+    input.active_controller = Some(controller);
+    Ok(())
 }
 
-fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
+fn poll_events(
+    sdl_context: &Sdl,
+    input: &mut Input,
+    controllers: &GameControllerSubsystem,
+) -> Result<(), String> {
     for event in sdl_context.event_pump()?.poll_iter() {
         match event {
             Event::Quit { .. }
@@ -155,6 +164,22 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
             } => match axis {
                 Axis::RightX => input.update_hand_from_raw_x(value),
                 Axis::RightY => input.update_hand_from_raw_y(value),
+                Axis::TriggerLeft => {
+                    if value < 100 {
+                        input.key_up(Keycode::Down);
+                    } else {
+                        input.key_down(Keycode::Down);
+                    }
+                    input.brake_alpha = value as f64 / i16::MAX as f64;
+                }
+                Axis::TriggerRight => {
+                    if value < 100 {
+                        input.key_up(Keycode::Up);
+                    } else {
+                        input.key_down(Keycode::Up);
+                    }
+                    input.speeder_alpha = value as f64 / i16::MAX as f64;
+                }
                 _ => {}
             },
             Event::MouseMotion {
@@ -169,7 +194,21 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
             } => {
                 input.update_hand_relatively(xrel, yrel);
             }
-            _ => (),
+            Event::ControllerDeviceAdded {
+                timestamp: _,
+                which,
+            } => match controllers.open(which).map_err(|e| e.to_string()) {
+                Ok(controller) => {
+                    input.active_controller = Some(controller);
+                }
+                Err(err) => log::error!("unable to connect controller: {err}"),
+            },
+
+            Event::ControllerDeviceRemoved {
+                timestamp: _,
+                which: _,
+            } => input.active_controller = None,
+            e => log::debug!("unrecognized event {e:?}"),
         }
     }
 
@@ -178,6 +217,10 @@ fn poll_events(sdl_context: &Sdl, input: &mut Input) -> Result<(), String> {
 
 fn main() -> Result<(), String> {
     let cli = Cli::parse();
+    simple_logger::SimpleLogger::new()
+        .with_level(cli.log_level)
+        .init()
+        .map_err(|err| err.to_string())?;
 
     let sdl_context = sdl2::init()?;
     let controller_system = sdl_context.game_controller()?;
@@ -214,8 +257,11 @@ fn main() -> Result<(), String> {
 
     let mut input = Input::with_sensitivity(cli.mouse_sensitivity);
 
-    if let Err(err) = check_for_controllers(&controller_system) {
-        println!("error connecting controller: {err}");
+    match check_for_controllers(&mut input, &controller_system) {
+        Ok(_) => log::info!("controller connected"),
+        Err(err) => {
+            log::warn!("error connecting controller: {err}")
+        }
     };
 
     let gearstick_position = (width - 128 * 4, padded_end(height, 160));
@@ -278,7 +324,7 @@ fn main() -> Result<(), String> {
 
         canvas.present();
 
-        poll_events(&sdl_context, &mut input)?;
+        poll_events(&sdl_context, &mut input, &controller_system)?;
 
         if input.get(&Action::Quit).is_some() {
             break 'game_loop Ok(());
@@ -310,7 +356,7 @@ fn main() -> Result<(), String> {
         }
 
         if input.action_active(&Action::Brake) {
-            let speed_diff = 50.0 / 60.0;
+            let speed_diff = (50.0 / 60.0) * input.brake_alpha;
             kmh -= speed_diff;
 
             if !(input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral) {
@@ -327,6 +373,7 @@ fn main() -> Result<(), String> {
                 &mut flywheel_rpm,
                 input.action_active(&Action::Accelerate),
                 input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral,
+                input.speeder_alpha,
             );
             kmh -= 1.0 / 60.0;
             if kmh < expected_kmh(700.0, Speed::Neutral.gear_ratio()) {
@@ -336,12 +383,17 @@ fn main() -> Result<(), String> {
             clutching_in = true;
             clutching_in_start_rpm = flywheel_rpm;
         } else if clutching_in_timer < 1.0 && clutching_in {
-            flywheel_rpm = lerp_1d(
-                clutching_in_timer,
-                clutching_in_start_rpm,
-                expected_rpm(kmh, gear.speed().gear_ratio()),
-            );
+            let target = expected_rpm(kmh, gear.speed().gear_ratio());
+            flywheel_rpm = lerp_1d(clutching_in_timer, clutching_in_start_rpm, target);
             clutching_in_timer += 4.0 / 60.0;
+
+            if (flywheel_rpm - target).abs() > 500.0 {
+                if let Some(ref mut controller) = input.active_controller {
+                    if let Err(err) = controller.set_rumble(u16::MAX, u16::MAX, 100) {
+                        log::warn!("unable to rumble: {err}");
+                    }
+                }
+            }
         } else if clutching_in && clutching_in_timer >= 1.0 {
             clutching_in = false;
             clutching_in_timer = 0.0;
@@ -350,6 +402,7 @@ fn main() -> Result<(), String> {
                 &mut flywheel_rpm,
                 input.action_active(&Action::Accelerate),
                 input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral,
+                input.speeder_alpha,
             );
             kmh = expected_kmh(flywheel_rpm, gear.speed().gear_ratio());
         }

@@ -20,6 +20,8 @@ config flags can be viewed with the `--help` flag
 - right stick controls hand
 - right shoulder to grab stick
 - left shoulder to push down clutch
+- right trigger to accelerate
+- left trigger to brake
 
 ### quirks
 
