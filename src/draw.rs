@@ -65,18 +65,46 @@ pub fn hand(
     Ok(())
 }
 
-pub fn clutch(
+pub struct PedalState {
+    pub clutch_down: bool,
+    pub speeder_down: bool,
+    pub brake_down: bool,
+}
+
+pub fn pedals(
     canvas: &mut WindowCanvas,
     texture: &Texture,
     position: (i16, i16),
-    is_clutched: bool,
+    PedalState {
+        clutch_down,
+        speeder_down,
+        brake_down,
+    }: PedalState,
 ) -> Result<(), String> {
-    let texture_x = if is_clutched { 224 } else { 192 };
+    let size = 160;
+
+    let texture_x = if clutch_down { 224 } else { 192 };
 
     canvas.copy(
         texture,
         rect!(texture_x, 32, 32, 32),
-        rect!(position.0, position.1, 256, 256),
+        rect!(position.0 - size, position.1, size, size),
+    )?;
+
+    let texture_x = if brake_down { 224 } else { 192 };
+
+    canvas.copy(
+        texture,
+        rect!(texture_x, 32, 32, 32),
+        rect!(position.0, position.1, size, size),
+    )?;
+
+    let texture_x = if speeder_down { 224 } else { 192 };
+
+    canvas.copy(
+        texture,
+        rect!(texture_x, 32, 32, 32),
+        rect!(position.0 + size, position.1, size, size),
     )?;
 
     Ok(())

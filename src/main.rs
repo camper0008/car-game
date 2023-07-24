@@ -10,6 +10,7 @@ mod macros;
 mod utils;
 
 use cli::{Cli, Parser};
+use draw::PedalState;
 use gear::{expected_kmh, expected_rpm, Gear, Speed};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
@@ -47,20 +48,24 @@ fn prepare_canvas(window: Window) -> Result<WindowCanvas, String> {
         .map_err(|e| e.to_string())
 }
 
-fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool) {
+fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool, clutch_down: bool) {
     let min_rpm = 700.0;
     let max_rpm = 8000.0;
 
     let rpm_to_accel = |rpm: f64| -rpm.powf(1.3) + 1.8 * rpm + 1.0;
-    let rpm_to_deaccel = |rpm: f64| rpm.powf(1.5) + 1.0;
+    let rpm_to_deaccel = |rpm: f64| rpm.powf(1.3) + 1.0;
 
     let acceleration_rate = rpm_to_accel(*rpm / 1000.0);
-    let deacceleration_rate = rpm_to_deaccel(*rpm / 1000.0);
+    let deacceleration_rate = if clutch_down {
+        rpm_to_deaccel(*rpm / 1000.0)
+    } else {
+        1.0
+    };
 
     if accelerating {
-        *rpm += 1500.0 / 60.0 * acceleration_rate;
+        *rpm += (1500.0 / 60.0) * acceleration_rate;
     } else {
-        *rpm -= 250.0 / 60.0 * deacceleration_rate;
+        *rpm -= 500.0 / 60.0 * deacceleration_rate;
     }
     if min_rpm > *rpm {
         *rpm = min_rpm + 50.0;
@@ -246,11 +251,15 @@ fn main() -> Result<(), String> {
             input.action_active(&Action::Grab),
         )?;
 
-        draw::clutch(
+        draw::pedals(
             &mut canvas,
             &texture,
-            (center(width, 256), padded_end(height, 128)),
-            input.action_active(&Action::Clutch),
+            (center(width, 160), padded_end(height, 160) + 96),
+            PedalState {
+                speeder_down: input.action_active(&Action::Accelerate),
+                clutch_down: input.action_active(&Action::Clutch),
+                brake_down: input.action_active(&Action::Brake),
+            },
         )?;
 
         draw::gear_state(
@@ -300,10 +309,22 @@ fn main() -> Result<(), String> {
             gear.reset(0.25, smoothed_gear_offset);
         }
 
-        if gear.speed() == Speed::Neutral {
+        if input.action_active(&Action::Brake) {
+            let speed_diff = 50.0 / 60.0;
+            let diff_a = expected_rpm(kmh, gear.speed().gear_ratio());
+            let diff_b = expected_rpm(kmh - speed_diff, gear.speed().gear_ratio());
+            kmh -= speed_diff;
+            flywheel_rpm -= diff_a - diff_b;
+        }
+
+        if gear.speed() == Speed::Neutral || input.action_active(&Action::Clutch) {
             clutching_in = false;
             clutching_in_timer = 0.0;
-            update_flywheel_rpm(&mut flywheel_rpm, input.action_active(&Action::Accelerate));
+            update_flywheel_rpm(
+                &mut flywheel_rpm,
+                input.action_active(&Action::Accelerate),
+                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral,
+            );
             kmh -= 1.0 / 60.0;
             if kmh < expected_kmh(700.0, Speed::Neutral.gear_ratio()) {
                 kmh = expected_kmh(700.0, Speed::Neutral.gear_ratio());
@@ -322,7 +343,11 @@ fn main() -> Result<(), String> {
             clutching_in = false;
             clutching_in_timer = 0.0;
         } else {
-            update_flywheel_rpm(&mut flywheel_rpm, input.action_active(&Action::Accelerate));
+            update_flywheel_rpm(
+                &mut flywheel_rpm,
+                input.action_active(&Action::Accelerate),
+                input.action_active(&Action::Clutch) || gear.speed() == Speed::Neutral,
+            );
             kmh = expected_kmh(flywheel_rpm, gear.speed().gear_ratio());
         }
 
@@ -340,7 +365,11 @@ fn main() -> Result<(), String> {
         }
         Hand::action_tick(&mut input);
 
-        previous_speed = gear.speed();
+        previous_speed = if input.action_active(&Action::Clutch) {
+            Speed::Neutral
+        } else {
+            gear.speed()
+        };
 
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }

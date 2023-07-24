@@ -14,6 +14,7 @@ pub enum ActionState {
 pub enum Action {
     Grab,
     Accelerate,
+    Brake,
     Clutch,
     Quit,
 }
@@ -24,6 +25,7 @@ impl TryFrom<sdl2::keyboard::Keycode> for Action {
     fn try_from(value: sdl2::keyboard::Keycode) -> Result<Self, Self::Error> {
         match value {
             sdl2::keyboard::Keycode::W | sdl2::keyboard::Keycode::Up => Ok(Action::Accelerate),
+            sdl2::keyboard::Keycode::S | sdl2::keyboard::Keycode::Down => Ok(Action::Brake),
             sdl2::keyboard::Keycode::Space => Ok(Action::Grab),
             sdl2::keyboard::Keycode::LShift => Ok(Action::Clutch),
             key => Err(format!("unrecognized keycode: {key:#?}")),
