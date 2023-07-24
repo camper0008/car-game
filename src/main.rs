@@ -47,13 +47,10 @@ fn prepare_canvas(window: Window) -> Result<WindowCanvas, String> {
         .map_err(|e| e.to_string())
 }
 
-fn flywheel_rpm(
-    rpm: f64,
-    input: &mut Input,
-    speeder_down: bool,
-    neutral_gear: bool,
-    speeder_alpha: f64,
-) -> f64 {
+fn flywheel_rpm(rpm: f64, input: &mut Input, neutral_gear: bool) -> f64 {
+    let speeder_down = input.action_active(&Action::Accelerate);
+    let speeder_alpha = input.speeder_alpha;
+
     let min_rpm = 700.0;
     let max_rpm = 8000.0;
 
@@ -222,6 +219,53 @@ fn window_size(window: &Window) -> Result<(i16, i16), String> {
     Ok(size)
 }
 
+pub struct KmhRpmPair {
+    kmh: f64,
+    rpm: f64,
+}
+
+fn brake(kmh: f64, rpm: f64, gear: &Gear, brake_alpha: f64) -> KmhRpmPair {
+    let kmh_diff = (50.0 / 60.0) * brake_alpha;
+
+    let rpm_diff = if !(gear == &Gear::Neutral) {
+        let rpm_before = expected_rpm(kmh, gear.gear_ratio());
+        let rpm_after = expected_rpm(kmh - kmh_diff, gear.gear_ratio());
+        rpm_before - rpm_after
+    } else {
+        0.0
+    };
+
+    KmhRpmPair {
+        kmh: kmh - kmh_diff,
+        rpm: rpm - rpm_diff,
+    }
+}
+
+fn switch_into_gear(
+    kmh: f64,
+    clutch_cooldown: &ClutchCooldown,
+    input: &mut Input,
+    gear: &Gear,
+) -> KmhRpmPair {
+    let target = expected_rpm(kmh, gear.gear_ratio());
+    let rpm = lerp_1d(clutch_cooldown.timer, clutch_cooldown.start_rpm, target);
+
+    if (rpm - target).abs() > 500.0 {
+        input.shake_controller();
+    }
+
+    KmhRpmPair { kmh, rpm }
+}
+
+fn update_rpm_in_neutral(kmh: f64, rpm: f64, input: &mut Input) -> KmhRpmPair {
+    let rpm = flywheel_rpm(rpm, input, true);
+    let kmh = kmh - (1.0 / 60.0);
+    let min = expected_kmh(700.0, Gear::Neutral.gear_ratio());
+    let kmh = if kmh < min { min } else { kmh };
+
+    KmhRpmPair { kmh, rpm }
+}
+
 fn main() -> Result<(), String> {
     let cli = Cli::parse();
     simple_logger::SimpleLogger::new()
@@ -309,47 +353,30 @@ fn main() -> Result<(), String> {
         };
 
         if input.action_active(&Action::Brake) {
-            let speed_diff = (50.0 / 60.0) * input.brake_alpha;
-            kmh -= speed_diff;
-
-            if !(gear == Gear::Neutral) {
-                let rpm_before = expected_rpm(kmh, gear.gear_ratio());
-                let rpm_after = expected_rpm(kmh - speed_diff, gear.gear_ratio());
-                rpm -= rpm_before - rpm_after;
-            }
+            let new = brake(kmh, rpm, &gear, input.brake_alpha);
+            kmh = new.kmh;
+            rpm = new.rpm;
         }
 
         if gear == Gear::Neutral {
             clutch_cooldown.active = false;
             clutch_cooldown.timer = 0.0;
-
-            let speeder_down = input.action_active(&Action::Accelerate);
-            let neutral_gear = gear == Gear::Neutral;
-            let speeder_alpha = input.speeder_alpha;
-            rpm = flywheel_rpm(rpm, &mut input, speeder_down, neutral_gear, speeder_alpha);
-            kmh -= 1.0 / 60.0;
-            if kmh < expected_kmh(700.0, Gear::Neutral.gear_ratio()) {
-                kmh = expected_kmh(700.0, Gear::Neutral.gear_ratio());
-            }
+            let new = update_rpm_in_neutral(kmh, rpm, &mut input);
+            kmh = new.kmh;
+            rpm = new.rpm;
         } else if previous_gear == Gear::Neutral && !clutch_cooldown.active {
             clutch_cooldown.active = true;
             clutch_cooldown.start_rpm = rpm;
         } else if clutch_cooldown.timer < 1.0 && clutch_cooldown.active {
-            let target = expected_rpm(kmh, gear.gear_ratio());
-            rpm = lerp_1d(clutch_cooldown.timer, clutch_cooldown.start_rpm, target);
-            clutch_cooldown.timer += 4.0 / 60.0;
-
-            if (rpm - target).abs() > 500.0 {
-                input.shake_controller();
-            }
+            clutch_cooldown.timer += 8.0 / 60.0;
+            let new = switch_into_gear(kmh, &clutch_cooldown, &mut input, &gear);
+            kmh = new.kmh;
+            rpm = new.rpm;
         } else if clutch_cooldown.active && clutch_cooldown.timer >= 1.0 {
             clutch_cooldown.active = false;
             clutch_cooldown.timer = 0.0;
         } else {
-            let speeder_down = input.action_active(&Action::Accelerate);
-            let neutral_gear = gear == Gear::Neutral;
-            let speeder_alpha = input.speeder_alpha;
-            rpm = flywheel_rpm(rpm, &mut input, speeder_down, neutral_gear, speeder_alpha);
+            rpm = flywheel_rpm(rpm, &mut input, gear == Gear::Neutral);
             kmh = expected_kmh(rpm, gear.gear_ratio());
         }
 
