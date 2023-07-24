@@ -203,8 +203,7 @@ impl From<i64> for Digit {
         if !(0..=9).contains(&value) {
             unreachable!("value {value} should be 0 >= {value} >= 9");
         }
-        let variant = values[value as usize].clone();
-        variant
+        values[value as usize].clone()
     }
 }
 
