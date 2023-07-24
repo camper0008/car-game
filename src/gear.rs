@@ -1,10 +1,22 @@
 use crate::utils;
 
+pub const NORMALIZED_RPM: f64 = 208.78;
+pub const REAR_GEAR_RATIO: f64 = 3.23;
+pub const TIRE_DIAMETER: f64 = 26.5;
+
 pub struct Gear {
     pub alpha: f64,
     pub held: bool,
     pub offset: (f64, f64),
     pub target: (f64, f64),
+}
+
+pub fn expected_kmh(rpm: f64, trans_gear_ratio: f64) -> f64 {
+    (rpm * TIRE_DIAMETER) / (NORMALIZED_RPM * REAR_GEAR_RATIO * trans_gear_ratio)
+}
+
+pub fn expected_rpm(kmh: f64, trans_gear_ratio: f64) -> f64 {
+    (NORMALIZED_RPM * kmh * REAR_GEAR_RATIO * trans_gear_ratio) / TIRE_DIAMETER
 }
 
 impl Gear {
@@ -82,6 +94,7 @@ impl Gear {
     }
 }
 
+#[derive(PartialEq)]
 pub enum Speed {
     Neutral,
     First,
@@ -90,4 +103,18 @@ pub enum Speed {
     Fourth,
     Fifth,
     Rocket,
+}
+
+impl Speed {
+    pub fn gear_ratio(&self) -> f64 {
+        match self {
+            Speed::Neutral => 3.55,
+            Speed::First => 3.55,
+            Speed::Second => 1.92,
+            Speed::Third => 1.32,
+            Speed::Fourth => 1.0,
+            Speed::Fifth => 0.82,
+            Speed::Rocket => 3.58,
+        }
+    }
 }

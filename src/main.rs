@@ -9,7 +9,7 @@ mod macros;
 mod utils;
 
 use cli::{Cli, Parser};
-use gear::{Gear, Speed};
+use gear::{expected_kmh, Gear, Speed};
 use hand::{clamp_clutch_down, clamp_clutch_up, Hand};
 use input::{Action, ActionState, Input};
 use sdl2::controller::{Axis, GameController};
@@ -106,6 +106,23 @@ fn draw_hand(
     Ok(())
 }
 
+fn draw_clutch(
+    canvas: &mut WindowCanvas,
+    texture: &Texture,
+    position: (i16, i16),
+    is_clutched: bool,
+) -> Result<(), String> {
+    let texture_x = if is_clutched { 224 } else { 192 };
+
+    canvas.copy(
+        texture,
+        rect!(texture_x, 32, 32, 32),
+        rect!(position.0, position.1, 256, 256),
+    )?;
+
+    Ok(())
+}
+
 fn draw_gear_state(
     canvas: &mut WindowCanvas,
     texture: &Texture,
@@ -113,44 +130,166 @@ fn draw_gear_state(
     gear: &Gear,
     is_clutched: bool,
 ) -> Result<(), String> {
-    let state = gear.state();
+    let state = if is_clutched {
+        Speed::Neutral
+    } else {
+        gear.state()
+    };
 
     let initial_x = 128;
     let initial_y = 64;
 
-    let (x, y) = if is_clutched {
-        (0, 0)
-    } else {
-        match state {
-            Speed::Neutral => (0, 0),
-            Speed::Rocket => (1, 0),
-            Speed::First => (0, 1),
-            Speed::Second => (1, 1),
-            Speed::Third => (0, 2),
-            Speed::Fourth => (1, 2),
-            Speed::Fifth => (0, 3),
-        }
+    let y = match state {
+        Speed::Neutral => 0,
+        Speed::Rocket => 1,
+        Speed::First => 2,
+        Speed::Second => 3,
+        Speed::Third => 4,
+        Speed::Fourth => 5,
+        Speed::Fifth => 6,
     };
 
     canvas.copy(
         texture,
-        rect!(initial_x + x * 32, initial_y + y * 16, 32, 16),
-        rect!(position.0, position.1, 256, 128),
+        rect!(initial_x, initial_y + y * 6, 24, 5),
+        rect!(position.0, position.1, 192, 40),
     )?;
 
-    if is_clutched {
-        canvas.copy(
-            texture,
-            rect!(224, 32, 32, 32),
-            rect!(position.0, position.1 + 128, 256, 256),
-        )?;
-    } else {
-        canvas.copy(
-            texture,
-            rect!(192, 32, 32, 32),
-            rect!(position.0, position.1 + 128, 256, 256),
-        )?;
+    Ok(())
+}
+
+#[derive(Clone)]
+enum Digit {
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    None,
+}
+
+impl Digit {
+    fn digit_to_texture(&self, negative: bool) -> (u32, u32) {
+        let (x, y) = match self {
+            Digit::Zero => (0, 0),
+            Digit::One => (1, 0),
+            Digit::Two => (2, 0),
+            Digit::Three => (3, 0),
+            Digit::Four => (0, 1),
+            Digit::Five => (1, 1),
+            Digit::Six => (2, 1),
+            Digit::Seven => (3, 1),
+            Digit::Eight => (0, 2),
+            Digit::Nine => (1, 2),
+            Digit::None => (2, 2),
+        };
+
+        let start_x = if negative { 176 } else { 160 };
+        let start_y = 64;
+
+        let x = (x * 4) + start_x;
+        let y = y * 5 + start_y;
+
+        (x, y)
     }
+}
+
+impl From<i64> for Digit {
+    fn from(value: i64) -> Self {
+        let values = [
+            Self::Zero,
+            Self::One,
+            Self::Two,
+            Self::Three,
+            Self::Four,
+            Self::Five,
+            Self::Six,
+            Self::Seven,
+            Self::Eight,
+            Self::Nine,
+        ];
+        if !(0..=9).contains(&value) {
+            unreachable!("value {value} should be 0 >= {value} >= 9");
+        }
+        let variant = values[value as usize].clone();
+        variant
+    }
+}
+
+fn get_digit(value: i64, digit_place: i64, negative: bool) -> Digit {
+    if value >= digit_place {
+        let value = value % (digit_place * 10);
+        let digit = (value - value % digit_place) / digit_place;
+        let digit: Digit = digit.into();
+        digit
+    } else {
+        Digit::None
+    }
+}
+
+fn draw_digit(
+    canvas: &mut WindowCanvas,
+    texture: &Texture,
+    digit: &Digit,
+    position: (i16, i16),
+    negative: bool,
+) -> Result<(), String> {
+    let (texture_x, texture_y) = digit.digit_to_texture(negative);
+
+    canvas.copy(
+        texture,
+        rect!(texture_x, texture_y, 3, 5),
+        rect!(position.0, position.1, 24, 40),
+    )?;
+
+    Ok(())
+}
+
+fn draw_kmh(
+    canvas: &mut WindowCanvas,
+    texture: &Texture,
+    position: (i16, i16),
+    kmh: f64,
+) -> Result<(), String> {
+    let kmh: i64 = kmh.round() as i64;
+    let negative = kmh.is_negative();
+    let kmh = kmh.abs();
+    let first_digit: Digit = (kmh % 10).into();
+    let second_digit = get_digit(kmh, 10, negative);
+    let third_digit = get_digit(kmh, 100, negative);
+
+    canvas.copy(
+        texture,
+        rect!(128, 106, 20, 5),
+        rect!(position.0, position.1, 160, 40),
+    )?;
+
+    draw_digit(
+        canvas,
+        texture,
+        &first_digit,
+        (position.0 + 160 + 96 - 8, position.1),
+        negative,
+    )?;
+    draw_digit(
+        canvas,
+        texture,
+        &second_digit,
+        (position.0 + 160 + 64 - 8, position.1),
+        negative && (0..10).contains(&kmh),
+    )?;
+    draw_digit(
+        canvas,
+        texture,
+        &third_digit,
+        (position.0 + 160 + 32 - 8, position.1),
+        negative && (10..100).contains(&kmh),
+    )?;
 
     Ok(())
 }
@@ -217,7 +356,7 @@ fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool) {
     let deacceleration_rate = rpm_to_deaccel(*rpm / 1000.0);
 
     if accelerating {
-        *rpm += 1000.0 / 60.0 * acceleration_rate;
+        *rpm += 1500.0 / 60.0 * acceleration_rate;
     } else {
         *rpm -= 250.0 / 60.0 * deacceleration_rate;
     }
@@ -347,6 +486,7 @@ fn main() -> Result<(), String> {
     let texture = texture_creator.load_texture(Path::new("assets/tile.png"))?;
 
     let mut flywheel_rpm: f64 = 0.0;
+    let mut kmh: f64 = 5.0;
 
     let mut hand = Hand {
         alpha: 0.0,
@@ -400,12 +540,25 @@ fn main() -> Result<(), String> {
             input.action_active(&Action::Grab),
         )?;
 
+        draw_clutch(
+            &mut canvas,
+            &texture,
+            (center(width, 256), padded_end(height, 128)),
+            input.action_active(&Action::Clutch),
+        )?;
+
         draw_gear_state(
             &mut canvas,
             &texture,
-            (center(width, 256), padded_end(height, 256)),
+            (center(width, 192), padded_end(height, 128) - 64),
             &gear,
             input.action_active(&Action::Clutch),
+        )?;
+        draw_kmh(
+            &mut canvas,
+            &texture,
+            (center(width, 160 + 96), padded_end(height, 128) - 128),
+            kmh,
         )?;
 
         canvas.present();
@@ -442,6 +595,11 @@ fn main() -> Result<(), String> {
         }
 
         update_flywheel_rpm(&mut flywheel_rpm, input.action_active(&Action::Accelerate));
+        if gear.state() == Speed::Neutral {
+            kmh -= 1.0 / 60.0;
+        } else {
+            kmh = expected_kmh(flywheel_rpm, gear.state().gear_ratio());
+        }
 
         if input.action_changed(&Action::Grab) {
             let x_square = (smoothed_hand_offset.0 - smoothed_gear_offset.0).powi(2);
