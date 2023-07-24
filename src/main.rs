@@ -207,20 +207,22 @@ fn draw_tachometer(
 }
 
 fn update_flywheel_rpm(rpm: &mut f64, accelerating: bool) {
-    let min_rpm = 0.0;
+    let min_rpm = 700.0;
     let max_rpm = 8000.0;
 
-    let flywheel_rpm_function = |rpm: f64| -rpm.powf(1.3) + 1.8 * rpm + 1.0;
+    let rpm_to_accel = |rpm: f64| -rpm.powf(1.3) + 1.8 * rpm + 1.0;
+    let rpm_to_deaccel = |rpm: f64| rpm.powf(1.5) + 1.0;
 
-    let acceleration_rate = flywheel_rpm_function(*rpm / 1000.0);
+    let acceleration_rate = rpm_to_accel(*rpm / 1000.0);
+    let deacceleration_rate = rpm_to_deaccel(*rpm / 1000.0);
 
     if accelerating {
         *rpm += 1000.0 / 60.0 * acceleration_rate;
     } else {
-        *rpm -= 250.0 / 60.0 * acceleration_rate;
+        *rpm -= 250.0 / 60.0 * deacceleration_rate;
     }
     if min_rpm > *rpm {
-        *rpm = min_rpm + 100.0;
+        *rpm = min_rpm + 50.0;
     } else if *rpm > max_rpm {
         *rpm = max_rpm - 100.0;
     }
